@@ -1,0 +1,42 @@
+syntax = "proto3";
+package mamut.conveyor;
+
+import "mamut/common.proto";
+
+message ZoneStatus {
+  mamut.common.ZoneId zone_id = 1;
+  ZoneState state = 2;
+  float speed_mps = 3;
+  bool item_present = 4;
+}
+
+enum ZoneState {
+  ZONE_STATE_UNSPECIFIED = 0;
+  ZONE_STATE_IDLE = 1;
+  ZONE_STATE_RUNNING = 2;
+  ZONE_STATE_FAULT = 3;
+  ZONE_STATE_STOPPED = 4;
+}
+
+service ConveyorService {
+  rpc GetZoneStatus(GetZoneStatusRequest) returns (ZoneStatus);
+  rpc SetZoneSpeed(SetZoneSpeedRequest) returns (ZoneStatus);
+  rpc StreamZoneEvents(StreamZoneEventsRequest) returns (stream ZoneEvent);
+}
+
+message GetZoneStatusRequest {
+  mamut.common.ZoneId zone_id = 1;
+}
+
+message SetZoneSpeedRequest {
+  mamut.common.ZoneId zone_id = 1;
+  float speed_mps = 2;
+}
+
+message StreamZoneEventsRequest {}
+
+message ZoneEvent {
+  mamut.common.ZoneId zone_id = 1;
+  mamut.common.Timestamp timestamp = 2;
+  string event_type = 3;
+}

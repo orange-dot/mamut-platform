@@ -1,0 +1,13 @@
+{
+  "name": "diverter-basic",
+  "vectors": [
+    {
+      "input": {"command": "activate", "target": "left"},
+      "expected": {"status": "active", "target": "left"}
+    },
+    {
+      "input": {"command": "deactivate"},
+      "expected": {"status": "idle"}
+    }
+  ]
+}

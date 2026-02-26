@@ -1,0 +1,52 @@
+[package]
+name = "mamut-orchestrator"
+description = "Test orchestration and coordination for distributed verification"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Internal crates
+mamut-core.workspace = true
+# Note: The following dependencies are listed for future integration but
+# currently have compilation issues with Rust 2024 edition.
+# mamut-generator.workspace = true
+# mamut-nemesis.workspace = true
+# mamut-checker.workspace = true
+# mamut-history.workspace = true
+# mamut-transport.workspace = true
+
+# Async
+tokio.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml = "0.9"
+
+# Error handling
+thiserror.workspace = true
+anyhow.workspace = true
+
+# Logging
+tracing.workspace = true
+
+# Time
+chrono.workspace = true
+
+# Utilities
+uuid.workspace = true
+dashmap.workspace = true
+parking_lot.workspace = true
+
+# Docker/Container support
+bollard = "0.18"
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["test-util"] }

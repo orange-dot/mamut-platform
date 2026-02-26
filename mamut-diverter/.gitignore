@@ -1,0 +1,82 @@
+# Build outputs
+build/
+**/build/
+**/target/
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+*.bin
+*.elf
+*.hex
+*.map
+
+# Rust
+services/target/
+**/*.rs.bk
+
+# C / CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile.cmake
+compile_commands.json
+
+# Node / Dashboard
+node_modules/
+dashboard/dist/
+dashboard/.vite/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+*.whl
+.venv/
+venv/
+
+# Environment & secrets
+.env
+.env.*
+*.env
+.ftp-credentials
+credentials.json
+
+# IDE
+.idea/
+.vscode/
+!*.code-workspace
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker/.env
+
+# Test / coverage
+coverage/
+htmlcov/
+.coverage
+*.gcno
+*.gcda
+*.gcov
+
+# Generated protobuf
+proto/gen/
+
+# Claude Code
+.claude/settings.local.json
+
+# Renode / emulation tools
+renode-portable/
+*.pkg.tar
+OVMF.fd

@@ -1,0 +1,548 @@
+{
+  "id": "incident-escalation",
+  "version": "1.0.0",
+  "name": "Incident Escalation Workflow",
+  "description": "Multi-tier incident management with time-based escalation (L1 → L2 → L3)",
+  "metadata": {
+    "author": "IoT Platform",
+    "tags": ["iot", "incident", "escalation", "support"]
+  },
+  "config": {
+    "timeoutSeconds": 86400,
+    "defaultRetryPolicy": {
+      "maxAttempts": 3,
+      "initialIntervalSeconds": 5,
+      "backoffCoefficient": 2.0
+    }
+  },
+  "startAt": "CreateIncident",
+  "states": {
+    "CreateIncident": {
+      "type": "Task",
+      "comment": "Create initial incident record",
+      "activity": "CreateRecordActivity",
+      "input": {
+        "recordType": "Incident",
+        "idempotencyKey": "$.input.idempotencyKey",
+        "data": {
+          "deviceId": "$.input.entityId",
+          "incidentType": "$.input.data.incidentType",
+          "severity": "$.input.data.severity",
+          "description": "$.input.data.description",
+          "source": "$.input.data.source",
+          "status": "Open",
+          "tier": "L1",
+          "createdAt": "$.variables.timestamp"
+        }
+      },
+      "resultPath": "$.stepResults.incident",
+      "next": "NotifyL1Support"
+    },
+    "NotifyL1Support": {
+      "type": "Task",
+      "comment": "Notify L1 support team",
+      "activity": "NotifyActivity",
+      "input": {
+        "channel": "teams",
+        "subject": "New Incident: $.stepResults.incident.recordId",
+        "message": "New incident requires L1 support attention",
+        "data": {
+          "incidentId": "$.stepResults.incident.recordId",
+          "deviceId": "$.input.entityId",
+          "severity": "$.input.data.severity",
+          "description": "$.input.data.description"
+        },
+        "recipients": ["l1-support"]
+      },
+      "resultPath": "$.stepResults.l1Notification",
+      "next": "WaitForL1Response"
+    },
+    "WaitForL1Response": {
+      "type": "Wait",
+      "comment": "Wait for L1 to acknowledge (15 min SLA)",
+      "waitForEvent": {
+        "eventType": "IncidentAcknowledged",
+        "timeoutSeconds": 900,
+        "matchConditions": {
+          "incidentId": "$.stepResults.incident.recordId"
+        }
+      },
+      "resultPath": "$.stepResults.l1Response",
+      "next": "UpdateL1Acknowledged",
+      "catch": [
+        {
+          "errors": ["States.Timeout"],
+          "resultPath": "$.stepResults.l1Timeout",
+          "next": "EscalateToL2"
+        }
+      ]
+    },
+    "UpdateL1Acknowledged": {
+      "type": "Task",
+      "comment": "Update incident with L1 acknowledgment",
+      "activity": "UpdateRecordActivity",
+      "input": {
+        "recordType": "Incident",
+        "recordId": "$.stepResults.incident.recordId",
+        "data": {
+          "status": "InProgress",
+          "acknowledgedBy": "$.stepResults.l1Response.userId",
+          "acknowledgedAt": "$.variables.timestamp",
+          "assignedTo": "$.stepResults.l1Response.userId"
+        }
+      },
+      "resultPath": "$.stepResults.l1Update",
+      "next": "WaitForL1Resolution"
+    },
+    "WaitForL1Resolution": {
+      "type": "Wait",
+      "comment": "Wait for L1 to resolve (1 hour SLA)",
+      "waitForEvent": {
+        "eventType": "IncidentResolved",
+        "timeoutSeconds": 3600,
+        "matchConditions": {
+          "incidentId": "$.stepResults.incident.recordId"
+        }
+      },
+      "resultPath": "$.stepResults.l1Resolution",
+      "next": "VerifyResolution",
+      "catch": [
+        {
+          "errors": ["States.Timeout"],
+          "resultPath": "$.stepResults.l1ResolutionTimeout",
+          "next": "EscalateToL2"
+        }
+      ]
+    },
+    "EscalateToL2": {
+      "type": "Task",
+      "comment": "Escalate incident to L2 support",
+      "activity": "UpdateRecordActivity",
+      "input": {
+        "recordType": "Incident",
+        "recordId": "$.stepResults.incident.recordId",
+        "data": {
+          "tier": "L2",
+          "status": "Escalated",
+          "escalatedAt": "$.variables.timestamp",
+          "escalationReason": "L1 SLA breach"
+        }
+      },
+      "resultPath": "$.stepResults.l2Escalation",
+      "next": "NotifyL2Support"
+    },
+    "NotifyL2Support": {
+      "type": "Parallel",
+      "comment": "Notify L2 and manager in parallel",
+      "branches": [
+        {
+          "startAt": "NotifyL2Team",
+          "states": {
+            "NotifyL2Team": {
+              "type": "Task",
+              "activity": "NotifyActivity",
+              "input": {
+                "channel": "teams",
+                "subject": "ESCALATED: Incident $.stepResults.incident.recordId",
+                "message": "Incident escalated to L2 - SLA breach on L1",
+                "priority": "high",
+                "data": {
+                  "incidentId": "$.stepResults.incident.recordId",
+                  "deviceId": "$.input.entityId",
+                  "severity": "$.input.data.severity"
+                },
+                "recipients": ["l2-support"]
+              },
+              "next": "L2NotifyDone"
+            },
+            "L2NotifyDone": {
+              "type": "Succeed"
+            }
+          }
+        },
+        {
+          "startAt": "NotifyManager",
+          "states": {
+            "NotifyManager": {
+              "type": "Task",
+              "activity": "NotifyActivity",
+              "input": {
+                "channel": "email",
+                "subject": "Incident Escalated to L2: $.stepResults.incident.recordId",
+                "message": "Incident has been escalated due to L1 SLA breach",
+                "recipients": ["support-manager@company.com"]
+              },
+              "next": "ManagerNotifyDone"
+            },
+            "ManagerNotifyDone": {
+              "type": "Succeed"
+            }
+          }
+        }
+      ],
+      "resultPath": "$.stepResults.l2Notifications",
+      "next": "WaitForL2Response"
+    },
+    "WaitForL2Response": {
+      "type": "Wait",
+      "comment": "Wait for L2 to acknowledge (10 min SLA)",
+      "waitForEvent": {
+        "eventType": "IncidentAcknowledged",
+        "timeoutSeconds": 600,
+        "matchConditions": {
+          "incidentId": "$.stepResults.incident.recordId"
+        }
+      },
+      "resultPath": "$.stepResults.l2Response",
+      "next": "UpdateL2Acknowledged",
+      "catch": [
+        {
+          "errors": ["States.Timeout"],
+          "resultPath": "$.stepResults.l2Timeout",
+          "next": "EscalateToL3"
+        }
+      ]
+    },
+    "UpdateL2Acknowledged": {
+      "type": "Task",
+      "comment": "Update incident with L2 acknowledgment",
+      "activity": "UpdateRecordActivity",
+      "input": {
+        "recordType": "Incident",
+        "recordId": "$.stepResults.incident.recordId",
+        "data": {
+          "status": "InProgress",
+          "l2AcknowledgedBy": "$.stepResults.l2Response.userId",
+          "l2AcknowledgedAt": "$.variables.timestamp",
+          "assignedTo": "$.stepResults.l2Response.userId"
+        }
+      },
+      "resultPath": "$.stepResults.l2Update",
+      "next": "WaitForL2Resolution"
+    },
+    "WaitForL2Resolution": {
+      "type": "Wait",
+      "comment": "Wait for L2 to resolve (4 hour SLA)",
+      "waitForEvent": {
+        "eventType": "IncidentResolved",
+        "timeoutSeconds": 14400,
+        "matchConditions": {
+          "incidentId": "$.stepResults.incident.recordId"
+        }
+      },
+      "resultPath": "$.stepResults.l2Resolution",
+      "next": "VerifyResolution",
+      "catch": [
+        {
+          "errors": ["States.Timeout"],
+          "resultPath": "$.stepResults.l2ResolutionTimeout",
+          "next": "EscalateToL3"
+        }
+      ]
+    },
+    "EscalateToL3": {
+      "type": "Task",
+      "comment": "Escalate incident to L3 engineering",
+      "activity": "UpdateRecordActivity",
+      "input": {
+        "recordType": "Incident",
+        "recordId": "$.stepResults.incident.recordId",
+        "data": {
+          "tier": "L3",
+          "status": "Critical",
+          "l3EscalatedAt": "$.variables.timestamp",
+          "escalationReason": "L2 SLA breach"
+        }
+      },
+      "resultPath": "$.stepResults.l3Escalation",
+      "next": "NotifyL3Support"
+    },
+    "NotifyL3Support": {
+      "type": "Parallel",
+      "comment": "Notify L3, management, and create war room",
+      "branches": [
+        {
+          "startAt": "NotifyL3Team",
+          "states": {
+            "NotifyL3Team": {
+              "type": "Task",
+              "activity": "NotifyActivity",
+              "input": {
+                "channel": "pager",
+                "subject": "CRITICAL: Incident $.stepResults.incident.recordId",
+                "message": "Critical escalation to L3 engineering",
+                "priority": "urgent",
+                "data": {
+                  "incidentId": "$.stepResults.incident.recordId",
+                  "deviceId": "$.input.entityId"
+                }
+              },
+              "next": "L3NotifyDone"
+            },
+            "L3NotifyDone": {
+              "type": "Succeed"
+            }
+          }
+        },
+        {
+          "startAt": "NotifyExecutive",
+          "states": {
+            "NotifyExecutive": {
+              "type": "Task",
+              "activity": "NotifyActivity",
+              "input": {
+                "channel": "email",
+                "subject": "CRITICAL Incident Escalation: $.stepResults.incident.recordId",
+                "message": "Incident has reached L3 escalation - executive notification",
+                "priority": "urgent",
+                "recipients": ["vp-engineering@company.com", "cto@company.com"]
+              },
+              "next": "ExecNotifyDone"
+            },
+            "ExecNotifyDone": {
+              "type": "Succeed"
+            }
+          }
+        },
+        {
+          "startAt": "CreateWarRoom",
+          "states": {
+            "CreateWarRoom": {
+              "type": "Task",
+              "activity": "CreateWarRoomActivity",
+              "input": {
+                "incidentId": "$.stepResults.incident.recordId",
+                "severity": "critical",
+                "participants": ["l3-engineering", "support-management", "product"]
+              },
+              "resultPath": "$.warRoom",
+              "next": "WarRoomDone"
+            },
+            "WarRoomDone": {
+              "type": "Succeed",
+              "output": {
+                "warRoomUrl": "$.warRoom.url"
+              }
+            }
+          }
+        }
+      ],
+      "resultPath": "$.stepResults.l3Notifications",
+      "next": "WaitForL3Response"
+    },
+    "WaitForL3Response": {
+      "type": "Wait",
+      "comment": "Wait for L3 to acknowledge (5 min SLA)",
+      "waitForEvent": {
+        "eventType": "IncidentAcknowledged",
+        "timeoutSeconds": 300,
+        "matchConditions": {
+          "incidentId": "$.stepResults.incident.recordId"
+        }
+      },
+      "resultPath": "$.stepResults.l3Response",
+      "next": "UpdateL3Acknowledged",
+      "catch": [
+        {
+          "errors": ["States.Timeout"],
+          "resultPath": "$.stepResults.l3Timeout",
+          "next": "CriticalEscalation"
+        }
+      ]
+    },
+    "UpdateL3Acknowledged": {
+      "type": "Task",
+      "comment": "Update incident with L3 acknowledgment",
+      "activity": "UpdateRecordActivity",
+      "input": {
+        "recordType": "Incident",
+        "recordId": "$.stepResults.incident.recordId",
+        "data": {
+          "status": "CriticalInProgress",
+          "l3AcknowledgedBy": "$.stepResults.l3Response.userId",
+          "l3AcknowledgedAt": "$.variables.timestamp",
+          "assignedTo": "$.stepResults.l3Response.userId"
+        }
+      },
+      "resultPath": "$.stepResults.l3Update",
+      "next": "WaitForL3Resolution"
+    },
+    "WaitForL3Resolution": {
+      "type": "Wait",
+      "comment": "Wait for L3 to resolve (8 hour SLA)",
+      "waitForEvent": {
+        "eventType": "IncidentResolved",
+        "timeoutSeconds": 28800,
+        "matchConditions": {
+          "incidentId": "$.stepResults.incident.recordId"
+        }
+      },
+      "resultPath": "$.stepResults.l3Resolution",
+      "next": "VerifyResolution",
+      "catch": [
+        {
+          "errors": ["States.Timeout"],
+          "resultPath": "$.stepResults.l3ResolutionTimeout",
+          "next": "CriticalEscalation"
+        }
+      ]
+    },
+    "CriticalEscalation": {
+      "type": "Task",
+      "comment": "Critical escalation - all hands required",
+      "activity": "NotifyActivity",
+      "input": {
+        "channel": "pager",
+        "subject": "ALL-HANDS: Critical Incident $.stepResults.incident.recordId",
+        "message": "All available engineers required - critical SLA breach",
+        "priority": "urgent",
+        "data": {
+          "incidentId": "$.stepResults.incident.recordId",
+          "deviceId": "$.input.entityId",
+          "breachedSLA": "L3"
+        }
+      },
+      "resultPath": "$.stepResults.criticalEscalation",
+      "next": "IncidentCritical"
+    },
+    "IncidentCritical": {
+      "type": "Fail",
+      "comment": "Critical incident - SLA breach at all levels",
+      "error": "CriticalSLABreach",
+      "cause": "Incident exceeded all escalation tier SLAs"
+    },
+    "VerifyResolution": {
+      "type": "Task",
+      "comment": "Verify incident resolution with device health check",
+      "activity": "HealthCheckActivity",
+      "input": {
+        "deviceId": "$.input.entityId",
+        "checkType": "post_incident",
+        "incidentType": "$.input.data.incidentType"
+      },
+      "resultPath": "$.stepResults.verification",
+      "next": "CheckVerification"
+    },
+    "CheckVerification": {
+      "type": "Choice",
+      "comment": "Check if verification passed",
+      "choices": [
+        {
+          "condition": {
+            "operator": "comparison",
+            "variable": "$.stepResults.verification.healthy",
+            "comparisonType": "Equals",
+            "value": true
+          },
+          "next": "CloseIncident"
+        }
+      ],
+      "default": "ReopenIncident"
+    },
+    "CloseIncident": {
+      "type": "Task",
+      "comment": "Close incident as resolved",
+      "activity": "UpdateRecordActivity",
+      "input": {
+        "recordType": "Incident",
+        "recordId": "$.stepResults.incident.recordId",
+        "data": {
+          "status": "Resolved",
+          "resolvedAt": "$.variables.timestamp",
+          "resolution": "$.stepResults.l1Resolution.resolution",
+          "verificationPassed": true
+        }
+      },
+      "resultPath": "$.stepResults.closeIncident",
+      "next": "NotifyResolution"
+    },
+    "NotifyResolution": {
+      "type": "Task",
+      "comment": "Notify about successful resolution",
+      "activity": "NotifyActivity",
+      "input": {
+        "channel": "teams",
+        "subject": "Incident Resolved: $.stepResults.incident.recordId",
+        "message": "Incident has been resolved and verified",
+        "data": {
+          "incidentId": "$.stepResults.incident.recordId",
+          "deviceId": "$.input.entityId",
+          "resolution": "$.stepResults.closeIncident.resolution"
+        }
+      },
+      "resultPath": "$.stepResults.resolutionNotification",
+      "next": "IncidentResolved"
+    },
+    "IncidentResolved": {
+      "type": "Succeed",
+      "comment": "Incident resolved successfully",
+      "output": {
+        "success": true,
+        "message": "Incident resolved and verified",
+        "incidentId": "$.stepResults.incident.recordId",
+        "deviceId": "$.input.entityId",
+        "resolutionTime": "$.stepResults.closeIncident.resolvedAt"
+      }
+    },
+    "ReopenIncident": {
+      "type": "Task",
+      "comment": "Reopen incident - verification failed",
+      "activity": "UpdateRecordActivity",
+      "input": {
+        "recordType": "Incident",
+        "recordId": "$.stepResults.incident.recordId",
+        "data": {
+          "status": "Reopened",
+          "reopenedAt": "$.variables.timestamp",
+          "reopenReason": "Post-resolution verification failed",
+          "verificationDetails": "$.stepResults.verification.details"
+        }
+      },
+      "resultPath": "$.stepResults.reopenIncident",
+      "next": "NotifyReopen"
+    },
+    "NotifyReopen": {
+      "type": "Task",
+      "comment": "Notify about incident reopen",
+      "activity": "NotifyActivity",
+      "input": {
+        "channel": "teams",
+        "subject": "Incident Reopened: $.stepResults.incident.recordId",
+        "message": "Incident verification failed - incident has been reopened",
+        "priority": "high",
+        "data": {
+          "incidentId": "$.stepResults.incident.recordId",
+          "deviceId": "$.input.entityId",
+          "verificationFailure": "$.stepResults.verification.failureReason"
+        }
+      },
+      "resultPath": "$.stepResults.reopenNotification",
+      "next": "DetermineReopenTier"
+    },
+    "DetermineReopenTier": {
+      "type": "Choice",
+      "comment": "Determine which tier to assign reopened incident",
+      "choices": [
+        {
+          "condition": {
+            "operator": "comparison",
+            "variable": "$.stepResults.incident.tier",
+            "comparisonType": "Equals",
+            "value": "L3"
+          },
+          "next": "WaitForL3Resolution"
+        },
+        {
+          "condition": {
+            "operator": "comparison",
+            "variable": "$.stepResults.incident.tier",
+            "comparisonType": "Equals",
+            "value": "L2"
+          },
+          "next": "WaitForL2Resolution"
+        }
+      ],
+      "default": "WaitForL1Resolution"
+    }
+  }
+}

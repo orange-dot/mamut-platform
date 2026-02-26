@@ -1,0 +1,20 @@
+# =============================================================================
+# Docker Compose Override for Development
+# This file is automatically merged with docker-compose.yml
+# Use for local development customizations
+# =============================================================================
+
+services:
+  # Disable the functions container if you want to run Functions locally
+  # Uncomment to use local Functions instead of containerized
+  # functions:
+  #   profiles: ["disabled"]
+
+  # Add verbose logging for debugging
+  azurite:
+    command: "azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --loose --debug /data/debug.log"
+
+  # Example: Mount local workflow definitions
+  # functions:
+  #   volumes:
+  #     - ../workflows:/home/site/wwwroot/workflows:ro

@@ -1,0 +1,396 @@
+# =============================================================================
+# Mamut Verification Harness - Development Overrides
+# =============================================================================
+# This file provides development-specific configuration overrides.
+# It extends the base docker-compose.yml with settings optimized for
+# local development and debugging.
+#
+# Usage:
+#   # Start with development overrides
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+#   # Or set COMPOSE_FILE environment variable
+#   export COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml
+#   docker compose up
+#
+#   # Rebuild after code changes
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# Features:
+#   - Source code bind mounts for hot reload
+#   - Debug ports exposed for remote debugging
+#   - Verbose logging enabled
+#   - Resource limits relaxed
+#   - Additional development tools
+#
+# =============================================================================
+
+version: "3.8"
+
+services:
+  # ---------------------------------------------------------------------------
+  # Controller - Development Overrides
+  # ---------------------------------------------------------------------------
+  controller:
+    # Use development build target (if defined in Dockerfile)
+    build:
+      context: ..
+      dockerfile: docker/controller.Dockerfile
+      # Build arguments for development
+      args:
+        - RUST_PROFILE=dev
+        - RUST_BACKTRACE=1
+
+    # Override environment for development
+    environment:
+      # Enable debug logging
+      - MAMUT_LOG_LEVEL=debug
+      # Use pretty-printed logs for readability
+      - MAMUT_LOG_FORMAT=pretty
+      # Enable Rust backtraces
+      - RUST_BACKTRACE=full
+      # Enable debug assertions
+      - MAMUT_DEBUG=true
+
+      # Server ports
+      - MAMUT_GRPC_PORT=50051
+      - MAMUT_HTTP_PORT=8080
+
+      # Data directories
+      - MAMUT_DATA_DIR=/data
+      - MAMUT_CONFIG_DIR=/config
+
+    # Additional ports for development
+    ports:
+      # gRPC port
+      - "50051:50051"
+      # HTTP port
+      - "8080:8080"
+      # Debug port for remote debugging (e.g., with rust-lldb)
+      # Connect with: lldb -p <pid> or VS Code remote debugging
+      - "9229:9229"
+      # Profiling port (if using tokio-console or similar)
+      - "6669:6669"
+
+    # Development volume mounts
+    # Bind mounts allow editing code on host and seeing changes in container
+    volumes:
+      # Persistent data
+      - controller-data:/data
+
+      # Configuration - writable in dev for experimentation
+      - ./config/controller:/config
+
+      # Source code bind mounts for hot reload
+      # Note: These require rebuilding the binary inside the container
+      # For true hot reload, use cargo-watch or similar
+      - ../crates:/build/crates:ro
+      - ../binaries:/build/binaries:ro
+      - ../proto:/build/proto:ro
+      - ../Cargo.toml:/build/Cargo.toml:ro
+      - ../Cargo.lock:/build/Cargo.lock:ro
+
+      # Cargo cache to speed up rebuilds
+      - cargo-cache:/usr/local/cargo/registry
+      - cargo-git-cache:/usr/local/cargo/git
+
+      # Target directory for incremental builds
+      - controller-target:/build/target
+
+    # Disable health check during development (faster startup)
+    healthcheck:
+      disable: true
+
+    # Relax resource limits for development
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4G
+
+    # Enable stdin for interactive debugging
+    stdin_open: true
+    tty: true
+
+  # ---------------------------------------------------------------------------
+  # Agent 1 - Development Overrides
+  # ---------------------------------------------------------------------------
+  agent-1:
+    build:
+      context: ..
+      dockerfile: docker/agent.Dockerfile
+      args:
+        - RUST_PROFILE=dev
+        - RUST_BACKTRACE=1
+
+    environment:
+      - MAMUT_LOG_LEVEL=debug
+      - MAMUT_LOG_FORMAT=pretty
+      - RUST_BACKTRACE=full
+      - MAMUT_DEBUG=true
+      - MAMUT_CONTROLLER_URL=http://controller:50051
+      - MAMUT_AGENT_ID=agent-1
+      - MAMUT_DATA_DIR=/data
+      - MAMUT_CONFIG_DIR=/config
+
+    ports:
+      # Agent gRPC/HTTP ports
+      - "50052:50052"
+      - "8081:8081"
+      # Debug port
+      - "9230:9229"
+
+    volumes:
+      - agent-1-data:/data
+      - ./config/agent:/config
+      - ../crates:/build/crates:ro
+      - ../binaries:/build/binaries:ro
+      - ../proto:/build/proto:ro
+      - ../Cargo.toml:/build/Cargo.toml:ro
+      - ../Cargo.lock:/build/Cargo.lock:ro
+      - cargo-cache:/usr/local/cargo/registry
+      - cargo-git-cache:/usr/local/cargo/git
+      - agent-1-target:/build/target
+
+    healthcheck:
+      disable: true
+
+    # Remove dependency on controller health for faster startup
+    depends_on:
+      - controller
+
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+
+    stdin_open: true
+    tty: true
+
+  # ---------------------------------------------------------------------------
+  # Agent 2 - Development Overrides
+  # ---------------------------------------------------------------------------
+  agent-2:
+    build:
+      context: ..
+      dockerfile: docker/agent.Dockerfile
+      args:
+        - RUST_PROFILE=dev
+        - RUST_BACKTRACE=1
+
+    environment:
+      - MAMUT_LOG_LEVEL=debug
+      - MAMUT_LOG_FORMAT=pretty
+      - RUST_BACKTRACE=full
+      - MAMUT_DEBUG=true
+      - MAMUT_CONTROLLER_URL=http://controller:50051
+      - MAMUT_AGENT_ID=agent-2
+      - MAMUT_DATA_DIR=/data
+      - MAMUT_CONFIG_DIR=/config
+
+    ports:
+      - "50053:50052"
+      - "8082:8081"
+      - "9231:9229"
+
+    volumes:
+      - agent-2-data:/data
+      - ./config/agent:/config
+      - ../crates:/build/crates:ro
+      - ../binaries:/build/binaries:ro
+      - ../proto:/build/proto:ro
+      - ../Cargo.toml:/build/Cargo.toml:ro
+      - ../Cargo.lock:/build/Cargo.lock:ro
+      - cargo-cache:/usr/local/cargo/registry
+      - cargo-git-cache:/usr/local/cargo/git
+      - agent-2-target:/build/target
+
+    healthcheck:
+      disable: true
+
+    depends_on:
+      - controller
+
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+
+    stdin_open: true
+    tty: true
+
+  # ---------------------------------------------------------------------------
+  # Agent 3 - Development Overrides
+  # ---------------------------------------------------------------------------
+  agent-3:
+    build:
+      context: ..
+      dockerfile: docker/agent.Dockerfile
+      args:
+        - RUST_PROFILE=dev
+        - RUST_BACKTRACE=1
+
+    environment:
+      - MAMUT_LOG_LEVEL=debug
+      - MAMUT_LOG_FORMAT=pretty
+      - RUST_BACKTRACE=full
+      - MAMUT_DEBUG=true
+      - MAMUT_CONTROLLER_URL=http://controller:50051
+      - MAMUT_AGENT_ID=agent-3
+      - MAMUT_DATA_DIR=/data
+      - MAMUT_CONFIG_DIR=/config
+
+    ports:
+      - "50054:50052"
+      - "8083:8081"
+      - "9232:9229"
+
+    volumes:
+      - agent-3-data:/data
+      - ./config/agent:/config
+      - ../crates:/build/crates:ro
+      - ../binaries:/build/binaries:ro
+      - ../proto:/build/proto:ro
+      - ../Cargo.toml:/build/Cargo.toml:ro
+      - ../Cargo.lock:/build/Cargo.lock:ro
+      - cargo-cache:/usr/local/cargo/registry
+      - cargo-git-cache:/usr/local/cargo/git
+      - agent-3-target:/build/target
+
+    healthcheck:
+      disable: true
+
+    depends_on:
+      - controller
+
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+
+    stdin_open: true
+    tty: true
+
+  # ---------------------------------------------------------------------------
+  # SUT - Development Overrides
+  # ---------------------------------------------------------------------------
+  sut:
+    # Development SUT can have additional debugging enabled
+    environment:
+      - PLACEHOLDER=true
+      - DEBUG=true
+
+    # Expose additional ports for SUT debugging
+    # ports:
+    #   - "2113:2113"
+    #   - "1113:1113"
+
+    volumes:
+      - sut-data:/data
+      # Add SUT-specific development mounts here
+
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 8G
+
+  # ---------------------------------------------------------------------------
+  # Development Tools (Optional Services)
+  # ---------------------------------------------------------------------------
+
+  # Jaeger for distributed tracing
+  # Uncomment to enable tracing visualization
+  # jaeger:
+  #   image: jaegertracing/all-in-one:latest
+  #   container_name: mamut-jaeger
+  #   ports:
+  #     - "16686:16686"  # Jaeger UI
+  #     - "6831:6831/udp"  # Jaeger agent
+  #     - "14268:14268"  # Jaeger collector
+  #   environment:
+  #     - COLLECTOR_OTLP_ENABLED=true
+  #   networks:
+  #     mamut-net:
+  #       ipv4_address: 172.28.0.200
+
+  # Prometheus for metrics
+  # Uncomment to enable metrics collection
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: mamut-prometheus
+  #   ports:
+  #     - "9090:9090"
+  #   volumes:
+  #     - ./config/prometheus:/etc/prometheus:ro
+  #     - prometheus-data:/prometheus
+  #   command:
+  #     - '--config.file=/etc/prometheus/prometheus.yml'
+  #     - '--storage.tsdb.path=/prometheus'
+  #   networks:
+  #     mamut-net:
+  #       ipv4_address: 172.28.0.201
+
+  # Grafana for dashboards
+  # Uncomment to enable visualization
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   container_name: mamut-grafana
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - grafana-data:/var/lib/grafana
+  #     - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+  #   environment:
+  #     - GF_SECURITY_ADMIN_PASSWORD=admin
+  #     - GF_USERS_ALLOW_SIGN_UP=false
+  #   networks:
+  #     mamut-net:
+  #       ipv4_address: 172.28.0.202
+
+# =============================================================================
+# ADDITIONAL VOLUMES FOR DEVELOPMENT
+# =============================================================================
+volumes:
+  # Cargo registry cache (shared across services)
+  # Dramatically speeds up rebuilds by caching downloaded crates
+  cargo-cache:
+    driver: local
+    labels:
+      - "com.mamut.description=Cargo registry cache"
+
+  # Cargo git dependencies cache
+  cargo-git-cache:
+    driver: local
+    labels:
+      - "com.mamut.description=Cargo git dependencies cache"
+
+  # Per-service target directories for incremental compilation
+  controller-target:
+    driver: local
+    labels:
+      - "com.mamut.description=Controller build target directory"
+
+  agent-1-target:
+    driver: local
+    labels:
+      - "com.mamut.description=Agent 1 build target directory"
+
+  agent-2-target:
+    driver: local
+    labels:
+      - "com.mamut.description=Agent 2 build target directory"
+
+  agent-3-target:
+    driver: local
+    labels:
+      - "com.mamut.description=Agent 3 build target directory"
+
+  # Observability data (if enabled)
+  # prometheus-data:
+  #   driver: local
+  # grafana-data:
+  #   driver: local

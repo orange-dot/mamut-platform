@@ -1,0 +1,240 @@
+name: UI E2E Tests
+
+on:
+  push:
+    branches: [main, feature/*]
+    paths:
+      - 'ui/**'
+      - '.github/workflows/ui-tests.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ui/**'
+      - '.github/workflows/ui-tests.yml'
+  workflow_dispatch:
+    inputs:
+      debug:
+        description: 'Run with debug output'
+        required: false
+        default: 'false'
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # Unit tests and linting
+  ui-lint-and-build:
+    name: Lint & Build UI
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-dist
+          path: ui/dist
+          retention-days: 1
+
+  # E2E tests with mocked backend
+  e2e-tests-standalone:
+    name: E2E Tests (Standalone)
+    runs-on: ubuntu-latest
+    needs: ui-lint-and-build
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Start dev server
+        run: npm run dev &
+        env:
+          VITE_API_URL: http://localhost:3001
+
+      - name: Wait for dev server
+        run: npx wait-on http://localhost:5173 --timeout 60000
+
+      - name: Run Playwright tests
+        run: npx playwright test e2e/visual-test.spec.ts e2e/error-check.spec.ts
+        env:
+          CI: true
+          BASE_URL: http://localhost:5173
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-standalone
+          path: |
+            ui/test-results/
+            ui/playwright-report/
+          retention-days: 7
+
+  # E2E tests with full backend - skipped for now (requires full Docker setup)
+  # Enable by setting repository variable ENABLE_INTEGRATION_TESTS=true
+  e2e-tests-integration:
+    name: E2E Tests (Integration)
+    runs-on: ubuntu-latest
+    needs: ui-lint-and-build
+    if: vars.ENABLE_INTEGRATION_TESTS == 'true'
+    services:
+      azurite:
+        image: mcr.microsoft.com/azure-storage/azurite
+        ports:
+          - 10000:10000
+          - 10001:10001
+          - 10002:10002
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Install Azure Functions Core Tools
+        run: |
+          curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg
+          sudo mv microsoft.gpg /etc/apt/trusted.gpg.d/microsoft.gpg
+          sudo sh -c 'echo "deb [arch=amd64] https://packages.microsoft.com/repos/microsoft-ubuntu-$(lsb_release -cs)-prod $(lsb_release -cs) main" > /etc/apt/sources.list.d/dotnetdev.list'
+          sudo apt-get update
+          sudo apt-get install azure-functions-core-tools-4
+
+      - name: Install UI dependencies
+        working-directory: ui
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: ui
+        run: npx playwright install chromium --with-deps
+
+      - name: Build .NET solution
+        run: dotnet build src/Orchestration.sln --configuration Release
+
+      - name: Start Azure Functions
+        run: |
+          cd src/Orchestration.Functions
+          func start --port 7071 &
+          sleep 10
+        env:
+          AzureWebJobsStorage: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://localhost:10000/devstoreaccount1;QueueEndpoint=http://localhost:10001/devstoreaccount1;TableEndpoint=http://localhost:10002/devstoreaccount1;"
+          FUNCTIONS_WORKER_RUNTIME: dotnet-isolated
+
+      - name: Start UI dev server
+        working-directory: ui
+        run: npm run dev &
+
+      - name: Wait for services
+        run: |
+          npx wait-on http://localhost:7071/api/definitions --timeout 180000 || echo "Functions not ready"
+          npx wait-on http://localhost:5173 --timeout 60000
+
+      - name: Run full E2E tests
+        working-directory: ui
+        run: npx playwright test
+        env:
+          CI: true
+          BASE_URL: http://localhost:5173
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-integration
+          path: |
+            ui/test-results/
+            ui/playwright-report/
+          retention-days: 7
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-screenshots
+          path: ui/e2e/screenshots/
+          retention-days: 7
+
+  # Visual regression testing (optional)
+  visual-regression:
+    name: Visual Regression
+    runs-on: ubuntu-latest
+    needs: ui-lint-and-build
+    if: github.event_name == 'pull_request'
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Start dev server
+        run: npm run dev &
+
+      - name: Wait for dev server
+        run: npx wait-on http://localhost:5173 --timeout 60000
+
+      - name: Run visual tests
+        run: npx playwright test e2e/visual-test.spec.ts --update-snapshots
+        env:
+          CI: true
+          BASE_URL: http://localhost:5173
+
+      - name: Upload visual snapshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-snapshots
+          path: ui/e2e/screenshots/
+          retention-days: 30

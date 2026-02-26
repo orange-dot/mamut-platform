@@ -1,0 +1,35 @@
+syntax = "proto3";
+package mamut.common;
+
+option java_package = "com.mamut.common";
+
+message Timestamp {
+  int64 seconds = 1;
+  int32 nanos = 2;
+}
+
+message ItemId {
+  string value = 1;
+}
+
+message ZoneId {
+  string value = 1;
+}
+
+message DiverterId {
+  string value = 1;
+}
+
+enum Direction {
+  DIRECTION_UNSPECIFIED = 0;
+  DIRECTION_LEFT = 1;
+  DIRECTION_RIGHT = 2;
+  DIRECTION_STRAIGHT = 3;
+}
+
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+  SEVERITY_INFO = 1;
+  SEVERITY_WARNING = 2;
+  SEVERITY_CRITICAL = 3;
+}

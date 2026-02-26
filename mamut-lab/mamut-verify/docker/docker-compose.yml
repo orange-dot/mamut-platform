@@ -1,0 +1,378 @@
+# =============================================================================
+# Mamut Verification Harness - Docker Compose Configuration
+# =============================================================================
+# This file defines the core services for running distributed verification tests.
+#
+# Architecture:
+#   controller (1) --> agents (N) --> SUT (system under test)
+#
+# The controller orchestrates test execution, agents inject faults and execute
+# operations, and the SUT is the distributed system being verified.
+#
+# Usage:
+#   docker compose up -d                    # Start all services
+#   docker compose up -d --scale agent=5   # Start with 5 agents
+#   docker compose down -v                  # Stop and remove volumes
+#   docker compose logs -f controller       # Follow controller logs
+#
+# =============================================================================
+
+# Docker Compose file format version
+# Version 3.8+ required for healthcheck start_period and other features
+version: "3.8"
+
+# =============================================================================
+# SERVICES
+# =============================================================================
+services:
+  # ---------------------------------------------------------------------------
+  # Controller Service
+  # ---------------------------------------------------------------------------
+  # The central orchestrator that:
+  # - Manages test execution and scheduling
+  # - Coordinates agent activities
+  # - Collects and analyzes test results
+  # - Provides HTTP API for monitoring and control
+  controller:
+    # Build configuration
+    build:
+      context: ..
+      dockerfile: docker/controller.Dockerfile
+    # Alternative: use pre-built image
+    # image: ghcr.io/mamut-lab/mamut-controller:latest
+
+    # Container name for easy reference
+    container_name: mamut-controller
+
+    # Hostname within the Docker network
+    hostname: controller
+
+    # Restart policy: restart unless explicitly stopped
+    restart: unless-stopped
+
+    # Port mappings (host:container)
+    ports:
+      # gRPC port for agent communication
+      - "50051:50051"
+      # HTTP port for REST API, health checks, and metrics
+      - "8080:8080"
+
+    # Environment variables
+    environment:
+      # Logging configuration
+      - MAMUT_LOG_LEVEL=info
+      - MAMUT_LOG_FORMAT=json
+
+      # Server ports (must match exposed ports)
+      - MAMUT_GRPC_PORT=50051
+      - MAMUT_HTTP_PORT=8080
+
+      # Data directories (mapped to volumes)
+      - MAMUT_DATA_DIR=/data
+      - MAMUT_CONFIG_DIR=/config
+
+      # Test configuration
+      - MAMUT_MAX_CONCURRENT_TESTS=10
+      - MAMUT_DEFAULT_TIMEOUT_SECS=300
+
+    # Volume mounts for persistent data
+    volumes:
+      # Test histories, checkpoints, and reports
+      - controller-data:/data
+      # Configuration files (read-only in production)
+      - ./config/controller:/config:ro
+
+    # Network configuration
+    networks:
+      mamut-net:
+        # Fixed IP for predictable addressing
+        ipv4_address: 172.28.0.10
+
+    # Health check (overrides Dockerfile HEALTHCHECK)
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # Agent Services
+  # ---------------------------------------------------------------------------
+  # Agents execute operations and inject faults. Multiple agents are deployed
+  # to simulate distributed client behavior and enable parallel fault injection.
+  #
+  # Each agent requires NET_ADMIN and SYS_TIME capabilities for fault injection.
+
+  # Agent 1
+  agent-1:
+    build:
+      context: ..
+      dockerfile: docker/agent.Dockerfile
+    container_name: mamut-agent-1
+    hostname: agent-1
+    restart: unless-stopped
+
+    # Grant Linux capabilities required for fault injection
+    # NET_ADMIN: tc/netem, iptables for network faults
+    # SYS_TIME: clock manipulation for time-related faults
+    cap_add:
+      - NET_ADMIN
+      - SYS_TIME
+
+    # Security options
+    # Disable seccomp to allow low-level network operations
+    # Note: This reduces security isolation - acceptable in test environments
+    security_opt:
+      - seccomp:unconfined
+
+    environment:
+      - MAMUT_LOG_LEVEL=info
+      - MAMUT_LOG_FORMAT=json
+      - MAMUT_CONTROLLER_URL=http://controller:50051
+      - MAMUT_AGENT_ID=agent-1
+      - MAMUT_DATA_DIR=/data
+      - MAMUT_CONFIG_DIR=/config
+
+    volumes:
+      - agent-1-data:/data
+      - ./config/agent:/config:ro
+
+    networks:
+      mamut-net:
+        ipv4_address: 172.28.0.21
+
+    # Wait for controller to be healthy before starting
+    depends_on:
+      controller:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  # Agent 2
+  agent-2:
+    build:
+      context: ..
+      dockerfile: docker/agent.Dockerfile
+    container_name: mamut-agent-2
+    hostname: agent-2
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - SYS_TIME
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      - MAMUT_LOG_LEVEL=info
+      - MAMUT_LOG_FORMAT=json
+      - MAMUT_CONTROLLER_URL=http://controller:50051
+      - MAMUT_AGENT_ID=agent-2
+      - MAMUT_DATA_DIR=/data
+      - MAMUT_CONFIG_DIR=/config
+    volumes:
+      - agent-2-data:/data
+      - ./config/agent:/config:ro
+    networks:
+      mamut-net:
+        ipv4_address: 172.28.0.22
+    depends_on:
+      controller:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  # Agent 3
+  agent-3:
+    build:
+      context: ..
+      dockerfile: docker/agent.Dockerfile
+    container_name: mamut-agent-3
+    hostname: agent-3
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - SYS_TIME
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      - MAMUT_LOG_LEVEL=info
+      - MAMUT_LOG_FORMAT=json
+      - MAMUT_CONTROLLER_URL=http://controller:50051
+      - MAMUT_AGENT_ID=agent-3
+      - MAMUT_DATA_DIR=/data
+      - MAMUT_CONFIG_DIR=/config
+    volumes:
+      - agent-3-data:/data
+      - ./config/agent:/config:ro
+    networks:
+      mamut-net:
+        ipv4_address: 172.28.0.23
+    depends_on:
+      controller:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # System Under Test (SUT) - Placeholder
+  # ---------------------------------------------------------------------------
+  # This is a placeholder for the distributed system being verified.
+  # Replace with your actual SUT configuration.
+  #
+  # Example configurations:
+  # - KurrentDB cluster
+  # - etcd cluster
+  # - Custom distributed system
+  sut:
+    # Placeholder image - replace with your actual SUT
+    image: alpine:latest
+    container_name: mamut-sut
+    hostname: sut
+
+    # Keep container running (placeholder behavior)
+    command: ["sleep", "infinity"]
+
+    # SUT-specific ports would go here
+    # ports:
+    #   - "2113:2113"  # Example: KurrentDB HTTP
+    #   - "1113:1113"  # Example: KurrentDB TCP
+
+    environment:
+      # SUT-specific environment variables
+      - PLACEHOLDER=true
+
+    volumes:
+      - sut-data:/data
+
+    networks:
+      mamut-net:
+        ipv4_address: 172.28.0.100
+
+    # Health check for your SUT
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:2113/health"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 5
+
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4G
+        reservations:
+          cpus: "1.0"
+          memory: 1G
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+networks:
+  # Primary test network
+  # Using a bridge network with a configurable subnet allows:
+  # - Predictable IP addressing for fault injection targeting
+  # - Network isolation from host
+  # - Custom MTU settings if needed
+  mamut-net:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        # Subnet configuration
+        # 172.28.0.0/16 provides 65,534 usable addresses
+        # Allocation:
+        #   172.28.0.1-9:     Reserved (gateway, etc.)
+        #   172.28.0.10-19:   Controller(s)
+        #   172.28.0.20-99:   Agents
+        #   172.28.0.100-199: SUT nodes
+        #   172.28.0.200+:    Auxiliary services
+        - subnet: 172.28.0.0/16
+          gateway: 172.28.0.1
+    # Driver options
+    driver_opts:
+      # Enable inter-container communication
+      com.docker.network.bridge.enable_icc: "true"
+      # Enable IP masquerading for outbound traffic
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+# Named volumes provide persistent storage that survives container restarts.
+# Use 'docker compose down -v' to remove volumes when cleaning up.
+volumes:
+  # Controller data: test histories, checkpoints, analysis results
+  controller-data:
+    driver: local
+    labels:
+      - "com.mamut.description=Controller persistent data"
+
+  # Agent data: local caches, operation logs
+  agent-1-data:
+    driver: local
+    labels:
+      - "com.mamut.description=Agent 1 persistent data"
+
+  agent-2-data:
+    driver: local
+    labels:
+      - "com.mamut.description=Agent 2 persistent data"
+
+  agent-3-data:
+    driver: local
+    labels:
+      - "com.mamut.description=Agent 3 persistent data"
+
+  # SUT data: database files, logs
+  sut-data:
+    driver: local
+    labels:
+      - "com.mamut.description=System under test persistent data"

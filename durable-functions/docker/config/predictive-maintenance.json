@@ -1,0 +1,444 @@
+{
+  "id": "predictive-maintenance",
+  "version": "1.0.0",
+  "name": "Predictive Maintenance Workflow",
+  "description": "Analyze device health and schedule maintenance with technician coordination",
+  "metadata": {
+    "author": "IoT Platform",
+    "tags": ["iot", "maintenance", "predictive", "scheduling"]
+  },
+  "config": {
+    "timeoutSeconds": 604800,
+    "defaultRetryPolicy": {
+      "maxAttempts": 3,
+      "initialIntervalSeconds": 10,
+      "backoffCoefficient": 2.0
+    }
+  },
+  "startAt": "CollectMetrics",
+  "states": {
+    "CollectMetrics": {
+      "type": "Parallel",
+      "comment": "Collect current, historical, and maintenance data in parallel",
+      "branches": [
+        {
+          "startAt": "GetCurrentMetrics",
+          "states": {
+            "GetCurrentMetrics": {
+              "type": "Task",
+              "activity": "GetDeviceMetricsActivity",
+              "input": {
+                "deviceId": "$.input.entityId",
+                "metricsType": "current",
+                "metrics": ["temperature", "vibration", "powerConsumption", "operatingHours", "cycleCount"]
+              },
+              "resultPath": "$.current",
+              "next": "CurrentDone"
+            },
+            "CurrentDone": {
+              "type": "Succeed",
+              "output": {
+                "type": "current",
+                "data": "$.current"
+              }
+            }
+          }
+        },
+        {
+          "startAt": "GetHistoricalMetrics",
+          "states": {
+            "GetHistoricalMetrics": {
+              "type": "Task",
+              "activity": "GetDeviceMetricsActivity",
+              "input": {
+                "deviceId": "$.input.entityId",
+                "metricsType": "historical",
+                "windowDays": 90
+              },
+              "resultPath": "$.historical",
+              "next": "HistoricalDone"
+            },
+            "HistoricalDone": {
+              "type": "Succeed",
+              "output": {
+                "type": "historical",
+                "data": "$.historical"
+              }
+            }
+          }
+        },
+        {
+          "startAt": "GetMaintenanceHistory",
+          "states": {
+            "GetMaintenanceHistory": {
+              "type": "Task",
+              "activity": "GetRecordActivity",
+              "input": {
+                "recordType": "MaintenanceHistory",
+                "recordId": "$.input.entityId"
+              },
+              "resultPath": "$.maintenance",
+              "next": "MaintenanceDone"
+            },
+            "MaintenanceDone": {
+              "type": "Succeed",
+              "output": {
+                "type": "maintenance",
+                "data": "$.maintenance"
+              }
+            }
+          }
+        }
+      ],
+      "resultPath": "$.stepResults.metricsCollection",
+      "next": "AnalyzeWearPatterns"
+    },
+    "AnalyzeWearPatterns": {
+      "type": "Task",
+      "comment": "Analyze wear patterns using ML prediction model",
+      "activity": "PredictMaintenanceActivity",
+      "input": {
+        "deviceId": "$.input.entityId",
+        "currentMetrics": "$.stepResults.metricsCollection[0].data",
+        "historicalData": "$.stepResults.metricsCollection[1].data",
+        "maintenanceHistory": "$.stepResults.metricsCollection[2].data",
+        "predictionModel": "wear_analysis_v2"
+      },
+      "resultPath": "$.stepResults.prediction",
+      "next": "CheckMaintenanceNeeded"
+    },
+    "CheckMaintenanceNeeded": {
+      "type": "Choice",
+      "comment": "Determine if maintenance is needed based on prediction",
+      "choices": [
+        {
+          "condition": {
+            "operator": "comparison",
+            "variable": "$.stepResults.prediction.maintenanceRequired",
+            "comparisonType": "Equals",
+            "value": true
+          },
+          "next": "DetermineUrgency"
+        }
+      ],
+      "default": "NoMaintenanceNeeded"
+    },
+    "DetermineUrgency": {
+      "type": "Choice",
+      "comment": "Route based on maintenance urgency",
+      "choices": [
+        {
+          "condition": {
+            "operator": "comparison",
+            "variable": "$.stepResults.prediction.urgency",
+            "comparisonType": "Equals",
+            "value": "immediate"
+          },
+          "next": "ScheduleImmediateMaintenance"
+        },
+        {
+          "condition": {
+            "operator": "comparison",
+            "variable": "$.stepResults.prediction.urgency",
+            "comparisonType": "Equals",
+            "value": "scheduled"
+          },
+          "next": "SchedulePlannedMaintenance"
+        }
+      ],
+      "default": "SchedulePreventiveMaintenance"
+    },
+    "ScheduleImmediateMaintenance": {
+      "type": "Task",
+      "comment": "Schedule immediate maintenance - device at risk",
+      "activity": "ScheduleMaintenanceActivity",
+      "input": {
+        "deviceId": "$.input.entityId",
+        "urgency": "immediate",
+        "schedulingWindow": "24h",
+        "requiredSkills": "$.stepResults.prediction.requiredSkills",
+        "estimatedDuration": "$.stepResults.prediction.estimatedDuration",
+        "partsRequired": "$.stepResults.prediction.partsRequired"
+      },
+      "resultPath": "$.stepResults.scheduling",
+      "next": "NotifyTechnician"
+    },
+    "SchedulePlannedMaintenance": {
+      "type": "Task",
+      "comment": "Schedule planned maintenance within prediction window",
+      "activity": "ScheduleMaintenanceActivity",
+      "input": {
+        "deviceId": "$.input.entityId",
+        "urgency": "scheduled",
+        "schedulingWindow": "$.stepResults.prediction.recommendedWindow",
+        "requiredSkills": "$.stepResults.prediction.requiredSkills",
+        "estimatedDuration": "$.stepResults.prediction.estimatedDuration",
+        "partsRequired": "$.stepResults.prediction.partsRequired"
+      },
+      "resultPath": "$.stepResults.scheduling",
+      "next": "NotifyTechnician"
+    },
+    "SchedulePreventiveMaintenance": {
+      "type": "Task",
+      "comment": "Schedule preventive maintenance during next window",
+      "activity": "ScheduleMaintenanceActivity",
+      "input": {
+        "deviceId": "$.input.entityId",
+        "urgency": "preventive",
+        "schedulingWindow": "30d",
+        "requiredSkills": "$.stepResults.prediction.requiredSkills",
+        "estimatedDuration": "$.stepResults.prediction.estimatedDuration"
+      },
+      "resultPath": "$.stepResults.scheduling",
+      "next": "NotifyTechnician"
+    },
+    "NotifyTechnician": {
+      "type": "Task",
+      "comment": "Notify assigned technician about maintenance task",
+      "activity": "NotifyActivity",
+      "input": {
+        "channel": "email",
+        "subject": "Maintenance Assignment: $.input.entityId",
+        "message": "You have been assigned a maintenance task",
+        "recipients": ["$.stepResults.scheduling.assignedTechnician.email"],
+        "data": {
+          "deviceId": "$.input.entityId",
+          "scheduledTime": "$.stepResults.scheduling.scheduledTime",
+          "location": "$.stepResults.scheduling.location",
+          "workOrderId": "$.stepResults.scheduling.workOrderId",
+          "estimatedDuration": "$.stepResults.prediction.estimatedDuration",
+          "partsRequired": "$.stepResults.prediction.partsRequired",
+          "wearIndicators": "$.stepResults.prediction.wearIndicators"
+        }
+      },
+      "resultPath": "$.stepResults.techNotification",
+      "next": "WaitForConfirmation"
+    },
+    "WaitForConfirmation": {
+      "type": "Wait",
+      "comment": "Wait for technician to confirm assignment (24h timeout)",
+      "waitForEvent": {
+        "eventType": "MaintenanceConfirmed",
+        "timeoutSeconds": 86400,
+        "matchConditions": {
+          "workOrderId": "$.stepResults.scheduling.workOrderId"
+        }
+      },
+      "resultPath": "$.stepResults.confirmation",
+      "next": "CreateWorkOrder",
+      "catch": [
+        {
+          "errors": ["States.Timeout"],
+          "resultPath": "$.stepResults.confirmationTimeout",
+          "next": "ReassignTechnician"
+        }
+      ]
+    },
+    "ReassignTechnician": {
+      "type": "Task",
+      "comment": "Reassign to backup technician",
+      "activity": "ReassignMaintenanceActivity",
+      "input": {
+        "workOrderId": "$.stepResults.scheduling.workOrderId",
+        "reason": "No confirmation from primary technician"
+      },
+      "resultPath": "$.stepResults.reassignment",
+      "next": "NotifyBackupTechnician"
+    },
+    "NotifyBackupTechnician": {
+      "type": "Task",
+      "comment": "Notify backup technician",
+      "activity": "NotifyActivity",
+      "input": {
+        "channel": "email",
+        "subject": "REASSIGNED Maintenance: $.input.entityId",
+        "message": "Maintenance task has been reassigned to you",
+        "recipients": ["$.stepResults.reassignment.newTechnician.email"],
+        "priority": "high",
+        "data": {
+          "deviceId": "$.input.entityId",
+          "workOrderId": "$.stepResults.scheduling.workOrderId"
+        }
+      },
+      "resultPath": "$.stepResults.backupNotification",
+      "next": "CreateWorkOrder"
+    },
+    "CreateWorkOrder": {
+      "type": "Task",
+      "comment": "Create official work order record",
+      "activity": "CreateRecordActivity",
+      "input": {
+        "recordType": "WorkOrder",
+        "idempotencyKey": "$.input.idempotencyKey",
+        "data": {
+          "workOrderId": "$.stepResults.scheduling.workOrderId",
+          "deviceId": "$.input.entityId",
+          "type": "predictive_maintenance",
+          "urgency": "$.stepResults.prediction.urgency",
+          "scheduledTime": "$.stepResults.scheduling.scheduledTime",
+          "assignedTechnician": "$.stepResults.scheduling.assignedTechnician.id",
+          "prediction": "$.stepResults.prediction",
+          "status": "Scheduled",
+          "createdAt": "$.variables.timestamp"
+        }
+      },
+      "resultPath": "$.stepResults.workOrder",
+      "next": "WaitForCompletion"
+    },
+    "WaitForCompletion": {
+      "type": "Wait",
+      "comment": "Wait for maintenance completion (7 day timeout)",
+      "waitForEvent": {
+        "eventType": "MaintenanceCompleted",
+        "timeoutSeconds": 604800,
+        "matchConditions": {
+          "workOrderId": "$.stepResults.scheduling.workOrderId"
+        }
+      },
+      "resultPath": "$.stepResults.completion",
+      "next": "VerifyMaintenance",
+      "catch": [
+        {
+          "errors": ["States.Timeout"],
+          "resultPath": "$.stepResults.completionTimeout",
+          "next": "EscalateOverdue"
+        }
+      ]
+    },
+    "VerifyMaintenance": {
+      "type": "Task",
+      "comment": "Verify device health after maintenance",
+      "activity": "HealthCheckActivity",
+      "input": {
+        "deviceId": "$.input.entityId",
+        "checkType": "post_maintenance",
+        "expectedImprovements": "$.stepResults.prediction.expectedImprovements"
+      },
+      "resultPath": "$.stepResults.verification",
+      "next": "VerificationChoice"
+    },
+    "VerificationChoice": {
+      "type": "Choice",
+      "comment": "Check if maintenance was successful",
+      "choices": [
+        {
+          "condition": {
+            "operator": "comparison",
+            "variable": "$.stepResults.verification.successful",
+            "comparisonType": "Equals",
+            "value": true
+          },
+          "next": "UpdateMaintenanceRecords"
+        }
+      ],
+      "default": "MaintenanceIssueDetected"
+    },
+    "UpdateMaintenanceRecords": {
+      "type": "Task",
+      "comment": "Update maintenance history and device records",
+      "activity": "UpdateRecordActivity",
+      "input": {
+        "recordType": "MaintenanceHistory",
+        "recordId": "$.input.entityId",
+        "data": {
+          "lastMaintenance": "$.variables.timestamp",
+          "maintenanceType": "$.stepResults.prediction.maintenanceType",
+          "workOrderId": "$.stepResults.workOrder.recordId",
+          "technicianNotes": "$.stepResults.completion.notes"
+        }
+      },
+      "resultPath": "$.stepResults.recordUpdate",
+      "next": "CloseWorkOrder"
+    },
+    "CloseWorkOrder": {
+      "type": "Task",
+      "comment": "Close work order as successful",
+      "activity": "UpdateRecordActivity",
+      "input": {
+        "recordType": "WorkOrder",
+        "recordId": "$.stepResults.workOrder.recordId",
+        "data": {
+          "status": "Completed",
+          "completedAt": "$.variables.timestamp",
+          "verificationPassed": true
+        }
+      },
+      "resultPath": "$.stepResults.workOrderClose",
+      "next": "MaintenanceSuccess"
+    },
+    "MaintenanceSuccess": {
+      "type": "Succeed",
+      "comment": "Predictive maintenance completed successfully",
+      "output": {
+        "success": true,
+        "message": "Predictive maintenance completed and verified",
+        "deviceId": "$.input.entityId",
+        "workOrderId": "$.stepResults.workOrder.recordId",
+        "maintenanceType": "$.stepResults.prediction.maintenanceType"
+      }
+    },
+    "MaintenanceIssueDetected": {
+      "type": "Task",
+      "comment": "Notify about verification failure",
+      "activity": "NotifyActivity",
+      "input": {
+        "channel": "teams",
+        "subject": "Maintenance Verification Failed",
+        "message": "Device health check failed after maintenance",
+        "priority": "high",
+        "data": {
+          "deviceId": "$.input.entityId",
+          "workOrderId": "$.stepResults.workOrder.recordId",
+          "failedChecks": "$.stepResults.verification.failedChecks"
+        }
+      },
+      "resultPath": "$.stepResults.issueNotification",
+      "next": "MaintenanceNeedsReview"
+    },
+    "MaintenanceNeedsReview": {
+      "type": "Succeed",
+      "comment": "Maintenance needs additional review",
+      "output": {
+        "success": false,
+        "message": "Maintenance completed but verification failed - needs review",
+        "deviceId": "$.input.entityId",
+        "workOrderId": "$.stepResults.workOrder.recordId",
+        "verificationIssues": "$.stepResults.verification.failedChecks"
+      }
+    },
+    "EscalateOverdue": {
+      "type": "Task",
+      "comment": "Escalate overdue maintenance",
+      "activity": "NotifyActivity",
+      "input": {
+        "channel": "pager",
+        "subject": "OVERDUE: Maintenance Work Order",
+        "message": "Maintenance work order has exceeded deadline",
+        "priority": "high",
+        "data": {
+          "deviceId": "$.input.entityId",
+          "workOrderId": "$.stepResults.scheduling.workOrderId"
+        }
+      },
+      "resultPath": "$.stepResults.escalation",
+      "next": "MaintenanceOverdue"
+    },
+    "MaintenanceOverdue": {
+      "type": "Fail",
+      "comment": "Maintenance work order overdue",
+      "error": "MaintenanceOverdue",
+      "cause": "Maintenance was not completed within the scheduled window"
+    },
+    "NoMaintenanceNeeded": {
+      "type": "Succeed",
+      "comment": "No maintenance needed at this time",
+      "output": {
+        "success": true,
+        "message": "Device health analysis complete - no maintenance required",
+        "deviceId": "$.input.entityId",
+        "nextRecommendedCheck": "$.stepResults.prediction.nextRecommendedCheck",
+        "healthScore": "$.stepResults.prediction.healthScore"
+      }
+    }
+  }
+}

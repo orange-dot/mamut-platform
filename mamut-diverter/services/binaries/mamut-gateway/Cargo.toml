@@ -1,0 +1,13 @@
+[package]
+name = "mamut-gateway"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+mamut-core = { path = "../../crates/mamut-core" }
+mamut-transport = { path = "../../crates/mamut-transport" }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

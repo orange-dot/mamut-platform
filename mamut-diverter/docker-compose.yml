@@ -1,0 +1,35 @@
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.services
+    command: mamut-gateway
+    ports:
+      - "50051:50051"
+
+  controller:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.services
+    command: mamut-controller
+    ports:
+      - "50052:50052"
+
+  wms-bridge:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.services
+    command: mamut-wms-bridge
+
+  postal-bridge:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.services
+    command: mamut-postal-bridge
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dashboard
+    ports:
+      - "8080:80"

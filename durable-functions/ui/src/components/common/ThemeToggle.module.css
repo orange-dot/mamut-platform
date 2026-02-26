@@ -1,0 +1,31 @@
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.toggle:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+}
+
+.toggle:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.icon {
+  font-size: 1rem;
+}
+
+.label {
+  font-weight: 500;
+}

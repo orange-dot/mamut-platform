@@ -1,0 +1,130 @@
+version: '3.8'
+
+services:
+  flink-jobmanager:
+    image: flink:1.18-scala_2.12-java11
+    hostname: jobmanager
+    container_name: flink-jobmanager
+    expose:
+      - "6123"
+    ports:
+      - "8081:8081"
+    command: jobmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        jobmanager.memory.process.size: ${FLINK_JOBMANAGER_MEMORY:-1024m}
+        taskmanager.memory.process.size: ${FLINK_TASKMANAGER_MEMORY:-1024m}
+        taskmanager.numberOfTaskSlots: 4
+        parallelism.default: ${FLINK_PARALLELISM:-2}
+        execution.checkpointing.interval: ${FLINK_CHECKPOINT_INTERVAL_MS:-30000}
+        execution.checkpointing.mode: EXACTLY_ONCE
+        execution.checkpointing.timeout: 60000
+        execution.checkpointing.max-concurrent-checkpoints: 1
+        execution.checkpointing.min-pause: 5000
+        state.backend: filesystem
+        state.checkpoints.dir: file:///opt/flink/checkpoints
+        state.savepoints.dir: file:///opt/flink/savepoints
+        restart-strategy: fixed-delay
+        restart-strategy.fixed-delay.attempts: 3
+        restart-strategy.fixed-delay.delay: 10s
+    volumes:
+      - flink-checkpoints:/opt/flink/checkpoints
+      - flink-savepoints:/opt/flink/savepoints
+      - ./job-jars:/opt/flink/usrlib
+    networks:
+      - cosmosflink-network
+
+  flink-taskmanager:
+    image: flink:1.18-scala_2.12-java11
+    hostname: taskmanager
+    expose:
+      - "6121"
+      - "6122"
+    depends_on:
+      - flink-jobmanager
+    command: taskmanager
+    scale: 2
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        jobmanager.memory.process.size: ${FLINK_JOBMANAGER_MEMORY:-1024m}
+        taskmanager.memory.process.size: ${FLINK_TASKMANAGER_MEMORY:-1024m}
+        taskmanager.numberOfTaskSlots: 4
+        parallelism.default: ${FLINK_PARALLELISM:-2}
+        execution.checkpointing.interval: ${FLINK_CHECKPOINT_INTERVAL_MS:-30000}
+        execution.checkpointing.mode: EXACTLY_ONCE
+        execution.checkpointing.timeout: 60000
+        execution.checkpointing.max-concurrent-checkpoints: 1
+        execution.checkpointing.min-pause: 5000
+        state.backend: filesystem
+        state.checkpoints.dir: file:///opt/flink/checkpoints
+        state.savepoints.dir: file:///opt/flink/savepoints
+        restart-strategy: fixed-delay
+        restart-strategy.fixed-delay.attempts: 3
+        restart-strategy.fixed-delay.delay: 10s
+    volumes:
+      - flink-checkpoints:/opt/flink/checkpoints
+      - flink-savepoints:/opt/flink/savepoints
+      - ./job-jars:/opt/flink/usrlib
+    networks:
+      - cosmosflink-network
+
+  producer:
+    build: 
+      context: ../producer
+      dockerfile: Dockerfile
+    container_name: cosmosflink-producer
+    env_file:
+      - .env
+    environment:
+      - COSMOS_URI=${COSMOS_URI}
+      - COSMOS_KEY=${COSMOS_KEY}
+      - COSMOS_DB=${COSMOS_DB}
+      - COSMOS_SOURCE_CONTAINER=${COSMOS_SOURCE_CONTAINER}
+      - COSMOS_SOURCE_PKEY_PATH=${COSMOS_SOURCE_PKEY_PATH}
+      - PRODUCER_RATE_MSG_PER_SEC=${PRODUCER_RATE_MSG_PER_SEC}
+      - PRODUCER_BATCH_SIZE=${PRODUCER_BATCH_SIZE}
+      - PRODUCER_REGION=${PRODUCER_REGION}
+      - COSMOS_MAX_CONCURRENCY=${COSMOS_MAX_CONCURRENCY}
+      - COSMOS_MAX_RETRY_ATTEMPTS=${COSMOS_MAX_RETRY_ATTEMPTS}
+      - COSMOS_BACKOFF_MS=${COSMOS_BACKOFF_MS}
+      - COSMOS_REQUEST_TIMEOUT_MS=${COSMOS_REQUEST_TIMEOUT_MS}
+    depends_on:
+      - flink-jobmanager
+    networks:
+      - cosmosflink-network
+    restart: unless-stopped
+
+  consumer:
+    build: 
+      context: ../consumer
+      dockerfile: Dockerfile
+    container_name: cosmosflink-consumer
+    env_file:
+      - .env
+    environment:
+      - CONSUMER_HTTP_PORT=${CONSUMER_HTTP_PORT}
+      - CONSUMER_HTTP_HOST=${CONSUMER_HTTP_HOST}
+      - SERIALIZATION_FORMAT=${SERIALIZATION_FORMAT}
+    ports:
+      - "${CONSUMER_HTTP_PORT:-8080}:${CONSUMER_HTTP_PORT:-8080}"
+      - "${TCP_PORT:-9092}:${TCP_PORT:-9092}"
+    depends_on:
+      - flink-jobmanager
+    networks:
+      - cosmosflink-network
+    restart: unless-stopped
+
+volumes:
+  flink-checkpoints:
+    driver: local
+  flink-savepoints:
+    driver: local
+
+networks:
+  cosmosflink-network:
+    driver: bridge
+    name: cosmosflink-network

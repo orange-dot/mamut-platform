@@ -1,0 +1,47 @@
+syntax = "proto3";
+package mamut.diverter;
+
+import "mamut/common.proto";
+
+message DiverterStatus {
+  mamut.common.DiverterId diverter_id = 1;
+  DiverterState state = 2;
+  mamut.common.Direction active_target = 3;
+}
+
+enum DiverterState {
+  DIVERTER_STATE_UNSPECIFIED = 0;
+  DIVERTER_STATE_IDLE = 1;
+  DIVERTER_STATE_ACTIVE = 2;
+  DIVERTER_STATE_FAULT = 3;
+  DIVERTER_STATE_TESTING = 4;
+}
+
+service DiverterService {
+  rpc Activate(ActivateRequest) returns (DiverterStatus);
+  rpc Deactivate(DeactivateRequest) returns (DiverterStatus);
+  rpc GetStatus(GetStatusRequest) returns (DiverterStatus);
+  rpc SelfTest(SelfTestRequest) returns (SelfTestResponse);
+}
+
+message ActivateRequest {
+  mamut.common.DiverterId diverter_id = 1;
+  mamut.common.Direction target = 2;
+}
+
+message DeactivateRequest {
+  mamut.common.DiverterId diverter_id = 1;
+}
+
+message GetStatusRequest {
+  mamut.common.DiverterId diverter_id = 1;
+}
+
+message SelfTestRequest {
+  mamut.common.DiverterId diverter_id = 1;
+}
+
+message SelfTestResponse {
+  bool passed = 1;
+  string details = 2;
+}

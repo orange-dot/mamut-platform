@@ -1,0 +1,3 @@
+[gateway]
+mqtt_broker = "localhost:1883"
+grpc_listen = "0.0.0.0:50051"

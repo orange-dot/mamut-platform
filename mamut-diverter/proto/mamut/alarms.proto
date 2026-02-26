@@ -1,0 +1,35 @@
+syntax = "proto3";
+package mamut.alarms;
+
+import "mamut/common.proto";
+
+message Alarm {
+  string alarm_id = 1;
+  mamut.common.Severity severity = 2;
+  string source = 3;
+  string message = 4;
+  mamut.common.Timestamp timestamp = 5;
+  AlarmState state = 6;
+}
+
+enum AlarmState {
+  ALARM_STATE_UNSPECIFIED = 0;
+  ALARM_STATE_ACTIVE = 1;
+  ALARM_STATE_ACKNOWLEDGED = 2;
+  ALARM_STATE_CLEARED = 3;
+}
+
+service AlarmService {
+  rpc GetActiveAlarms(GetActiveAlarmsRequest) returns (GetActiveAlarmsResponse);
+  rpc AcknowledgeAlarm(AcknowledgeAlarmRequest) returns (Alarm);
+  rpc StreamAlarms(StreamAlarmsRequest) returns (stream Alarm);
+}
+
+message GetActiveAlarmsRequest {}
+message GetActiveAlarmsResponse {
+  repeated Alarm alarms = 1;
+}
+message AcknowledgeAlarmRequest {
+  string alarm_id = 1;
+}
+message StreamAlarmsRequest {}

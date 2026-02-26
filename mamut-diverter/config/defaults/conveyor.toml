@@ -1,0 +1,4 @@
+[conveyor]
+default_speed_mm_per_s = 500
+max_speed_mm_per_s = 2000
+zone_timeout_ms = 5000

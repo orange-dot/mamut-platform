@@ -1,0 +1,22 @@
+syntax = "proto3";
+package mamut.identification;
+
+import "mamut/common.proto";
+
+message ScanResult {
+  mamut.common.ItemId item_id = 1;
+  string barcode = 2;
+  float confidence = 3;
+  mamut.common.Timestamp timestamp = 4;
+}
+
+service IdentificationService {
+  rpc GetScanResult(GetScanResultRequest) returns (ScanResult);
+  rpc StreamScans(StreamScansRequest) returns (stream ScanResult);
+}
+
+message GetScanResultRequest {
+  mamut.common.ItemId item_id = 1;
+}
+
+message StreamScansRequest {}

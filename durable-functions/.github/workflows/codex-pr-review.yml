@@ -1,0 +1,283 @@
+# Codex PR Code Review
+# Automatically reviews pull requests using OpenAI API
+#
+# Prerequisites:
+# 1. Add OPENAI_API_KEY to repository secrets (Settings → Secrets → Actions)
+# 2. Set repository variable ENABLE_CODEX_REVIEW to 'true' to enable
+#
+# This workflow:
+# - Triggers on PR creation and updates
+# - Reviews code changes for correctness, security, performance
+# - Posts review comments directly on the PR
+#
+# NOTE: This workflow is DISABLED by default. Set ENABLE_CODEX_REVIEW='true' to enable.
+
+name: Codex PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Limit concurrent reviews per PR
+concurrency:
+  group: codex-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check-enabled:
+    name: Check if Review Enabled
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - name: Check ENABLE_CODEX_REVIEW
+        id: check
+        run: |
+          if [ "${{ vars.ENABLE_CODEX_REVIEW }}" = "true" ] && [ -n "${{ secrets.OPENAI_API_KEY }}" ]; then
+            echo "enabled=true" >> $GITHUB_OUTPUT
+            echo "✅ Codex review is enabled"
+          else
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "⏭️ Codex review is disabled (set ENABLE_CODEX_REVIEW=true and add OPENAI_API_KEY secret to enable)"
+          fi
+
+  codex-review:
+    name: AI Code Review
+    runs-on: ubuntu-latest
+    needs: check-enabled
+    if: needs.check-enabled.outputs.enabled == 'true'
+
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          fetch-depth: 0
+
+      - name: Get changed files
+        id: changed-files
+        run: |
+          # Get list of changed files in this PR
+          git diff --name-only origin/${{ github.base_ref }}...HEAD > changed_files.txt || true
+          echo "Changed files:"
+          cat changed_files.txt || echo "No files found"
+
+          # Filter to relevant files (code only, not too many)
+          grep -E '\.(cs|ts|tsx|json|yaml|yml)$' changed_files.txt | head -20 > filtered_files.txt || true
+
+          if [ -s filtered_files.txt ]; then
+            FILES=$(cat filtered_files.txt | tr '\n' ' ')
+            echo "files=$FILES" >> $GITHUB_OUTPUT
+            echo "has_files=true" >> $GITHUB_OUTPUT
+          else
+            echo "files=" >> $GITHUB_OUTPUT
+            echo "has_files=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get diff content
+        id: diff
+        if: steps.changed-files.outputs.has_files == 'true'
+        run: |
+          # Get a concise diff (limited to avoid token limits)
+          git diff origin/${{ github.base_ref }}...HEAD -- $(cat filtered_files.txt | tr '\n' ' ') | head -500 > diff.txt || true
+
+          if [ -s diff.txt ]; then
+            # Escape for JSON
+            DIFF=$(cat diff.txt | jq -Rs .)
+            echo "diff=$DIFF" >> $GITHUB_OUTPUT
+          else
+            echo "diff=\"No diff available\"" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Call OpenAI API
+        id: openai
+        if: steps.changed-files.outputs.has_files == 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          # Build the prompt
+          PROMPT="You are an expert code reviewer for an Azure Durable Functions orchestration system.
+
+          ## Repository Context
+          This is a .NET 9 solution with:
+          - Orchestration.Core: Workflow definitions, state machine interpreter
+          - Orchestration.Functions: Azure Durable Functions
+          - UI: React + TypeScript frontend
+
+          ## PR Details
+          PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}
+          Changed files: ${{ steps.changed-files.outputs.files }}
+
+          ## Review Focus
+          1. Correctness: Logic errors, edge cases
+          2. Security: Input validation, injection risks
+          3. Performance: Async issues, N+1 queries
+          4. Azure Durable Functions: Orchestrator determinism
+
+          ## Output Format
+          Provide a concise markdown review:
+          - 🟢 **Strengths**: What's done well
+          - 🟡 **Suggestions**: Improvements (if any)
+          - 🔴 **Issues**: Must-fix problems (if any)
+          - 📝 **Summary**: One sentence assessment
+
+          If changes look good, say so briefly."
+
+          # Make API call with error handling
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            https://api.openai.com/v1/chat/completions \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $OPENAI_API_KEY" \
+            -d "{
+              \"model\": \"gpt-4o-mini\",
+              \"messages\": [
+                {\"role\": \"system\", \"content\": \"You are a helpful code reviewer.\"},
+                {\"role\": \"user\", \"content\": $(echo "$PROMPT" | jq -Rs .)}
+              ],
+              \"max_tokens\": 1000,
+              \"temperature\": 0.3
+            }" 2>&1) || true
+
+          # Extract HTTP status code (last line)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          echo "HTTP Status: $HTTP_CODE"
+
+          # Validate response
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ API call failed with status $HTTP_CODE"
+            echo "Response: $BODY"
+            echo "review=" >> $GITHUB_OUTPUT
+            echo "success=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Check if response is valid JSON
+          if ! echo "$BODY" | jq -e . > /dev/null 2>&1; then
+            echo "❌ Invalid JSON response"
+            echo "Response: $BODY"
+            echo "review=" >> $GITHUB_OUTPUT
+            echo "success=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Extract the review content
+          REVIEW=$(echo "$BODY" | jq -r '.choices[0].message.content // empty')
+
+          if [ -z "$REVIEW" ]; then
+            echo "❌ No review content in response"
+            echo "review=" >> $GITHUB_OUTPUT
+            echo "success=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "✅ Review generated successfully"
+
+          # Save review to file to avoid escaping issues
+          echo "$REVIEW" > review.txt
+          echo "success=true" >> $GITHUB_OUTPUT
+
+      - name: Post Review Comment
+        if: steps.openai.outputs.success == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+
+            let review = '';
+            try {
+              review = fs.readFileSync('review.txt', 'utf8');
+            } catch (e) {
+              console.log('No review file found');
+              return;
+            }
+
+            if (!review || review.trim() === '') {
+              console.log('Empty review, skipping comment');
+              return;
+            }
+
+            // Check for existing Codex review comment
+            let existingCommentId = null;
+            try {
+              const comments = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+              });
+
+              const codexComment = comments.data.find(c =>
+                c.body && c.body.includes('<!-- codex-review -->') &&
+                c.user && c.user.login === 'github-actions[bot]'
+              );
+
+              if (codexComment) {
+                existingCommentId = codexComment.id;
+              }
+            } catch (e) {
+              console.log('Error listing comments:', e.message);
+            }
+
+            const body = `<!-- codex-review -->
+            ## 🤖 AI Code Review
+
+            ${review}
+
+            ---
+            <sub>Automated review • Commit: ${context.payload.pull_request.head.sha.substring(0, 7)}</sub>
+            `;
+
+            try {
+              if (existingCommentId) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existingCommentId,
+                  body: body,
+                });
+                console.log('Updated existing review comment');
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.payload.pull_request.number,
+                  body: body,
+                });
+                console.log('Created new review comment');
+              }
+            } catch (e) {
+              console.log('Error posting comment:', e.message);
+            }
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Codex Review Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.openai.outputs.success }}" = "true" ]; then
+            echo "✅ Review completed and posted to PR" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.changed-files.outputs.has_files }}" = "false" ]; then
+            echo "⏭️ No reviewable files changed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Review could not be generated (check API key and rate limits)" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  skip-message:
+    name: Review Skipped
+    runs-on: ubuntu-latest
+    needs: check-enabled
+    if: needs.check-enabled.outputs.enabled != 'true'
+    steps:
+      - name: Log skip reason
+        run: |
+          echo "## Codex Review Skipped" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "AI code review is disabled. To enable:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Add \`OPENAI_API_KEY\` to repository secrets" >> $GITHUB_STEP_SUMMARY
+          echo "2. Set repository variable \`ENABLE_CODEX_REVIEW\` to \`true\`" >> $GITHUB_STEP_SUMMARY

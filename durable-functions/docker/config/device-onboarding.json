@@ -1,0 +1,287 @@
+{
+  "id": "device-onboarding",
+  "version": "1.0.0",
+  "name": "Device Onboarding Workflow",
+  "description": "Complete device registration, validation, and provisioning lifecycle",
+  "metadata": {
+    "author": "IoT Platform",
+    "tags": ["iot", "onboarding", "provisioning"]
+  },
+  "config": {
+    "timeoutSeconds": 3600,
+    "defaultRetryPolicy": {
+      "maxAttempts": 3,
+      "initialIntervalSeconds": 2,
+      "backoffCoefficient": 2.0
+    }
+  },
+  "startAt": "ValidateDevice",
+  "states": {
+    "ValidateDevice": {
+      "type": "Task",
+      "comment": "Validate device credentials and metadata",
+      "activity": "ValidateDeviceActivity",
+      "input": {
+        "deviceId": "$.input.entityId",
+        "deviceType": "$.input.data.deviceType",
+        "firmwareVersion": "$.input.data.firmwareVersion",
+        "capabilities": "$.input.data.capabilities"
+      },
+      "resultPath": "$.stepResults.validation",
+      "next": "CheckDeviceExists",
+      "catch": [
+        {
+          "errors": ["ValidationError"],
+          "resultPath": "$.stepResults.validationError",
+          "next": "RejectDevice"
+        }
+      ]
+    },
+    "CheckDeviceExists": {
+      "type": "Task",
+      "comment": "Check if device is already registered",
+      "activity": "GetRecordActivity",
+      "input": {
+        "recordType": "Device",
+        "recordId": "$.input.entityId"
+      },
+      "resultPath": "$.stepResults.existingDevice",
+      "next": "DeviceExistsChoice",
+      "catch": [
+        {
+          "errors": ["States.ALL"],
+          "resultPath": "$.stepResults.lookupError",
+          "next": "CreateDeviceRecord"
+        }
+      ]
+    },
+    "DeviceExistsChoice": {
+      "type": "Choice",
+      "comment": "Branch based on whether device already exists",
+      "choices": [
+        {
+          "condition": {
+            "operator": "comparison",
+            "variable": "$.stepResults.existingDevice.found",
+            "comparisonType": "Equals",
+            "value": true
+          },
+          "next": "UpdateDeviceRecord"
+        }
+      ],
+      "default": "CreateDeviceRecord"
+    },
+    "CreateDeviceRecord": {
+      "type": "Task",
+      "comment": "Create new device record in registry",
+      "activity": "CreateRecordActivity",
+      "input": {
+        "recordType": "Device",
+        "idempotencyKey": "$.input.idempotencyKey",
+        "data": {
+          "deviceId": "$.input.entityId",
+          "deviceType": "$.input.data.deviceType",
+          "firmwareVersion": "$.input.data.firmwareVersion",
+          "capabilities": "$.input.data.capabilities",
+          "status": "Provisioning",
+          "createdAt": "$.variables.timestamp"
+        }
+      },
+      "resultPath": "$.stepResults.deviceRecord",
+      "compensateWith": "DeleteDeviceRecordActivity",
+      "next": "ProvisionResources"
+    },
+    "UpdateDeviceRecord": {
+      "type": "Task",
+      "comment": "Update existing device record",
+      "activity": "UpdateRecordActivity",
+      "input": {
+        "recordType": "Device",
+        "recordId": "$.input.entityId",
+        "data": {
+          "firmwareVersion": "$.input.data.firmwareVersion",
+          "capabilities": "$.input.data.capabilities",
+          "status": "Reprovisioning",
+          "updatedAt": "$.variables.timestamp"
+        }
+      },
+      "resultPath": "$.stepResults.deviceRecord",
+      "next": "ProvisionResources"
+    },
+    "ProvisionResources": {
+      "type": "Parallel",
+      "comment": "Provision IoT Hub and telemetry routes in parallel",
+      "branches": [
+        {
+          "startAt": "ProvisionIoTHub",
+          "states": {
+            "ProvisionIoTHub": {
+              "type": "Task",
+              "activity": "ProvisionIoTHubActivity",
+              "input": {
+                "deviceId": "$.input.entityId",
+                "deviceType": "$.input.data.deviceType"
+              },
+              "resultPath": "$.iotHub",
+              "compensateWith": "DeprovisionIoTHubActivity",
+              "next": "IoTHubDone"
+            },
+            "IoTHubDone": {
+              "type": "Succeed",
+              "output": {
+                "iotHubProvisioned": true,
+                "connectionString": "$.iotHub.connectionString"
+              }
+            }
+          }
+        },
+        {
+          "startAt": "SetupTelemetryRoute",
+          "states": {
+            "SetupTelemetryRoute": {
+              "type": "Task",
+              "activity": "SetupTelemetryRouteActivity",
+              "input": {
+                "deviceId": "$.input.entityId",
+                "routeType": "standard"
+              },
+              "resultPath": "$.telemetryRoute",
+              "compensateWith": "RemoveTelemetryRouteActivity",
+              "next": "TelemetryDone"
+            },
+            "TelemetryDone": {
+              "type": "Succeed",
+              "output": {
+                "telemetryRouteConfigured": true,
+                "routeId": "$.telemetryRoute.routeId"
+              }
+            }
+          }
+        }
+      ],
+      "resultPath": "$.stepResults.provisioning",
+      "next": "SendActivationNotification",
+      "catch": [
+        {
+          "errors": ["States.ALL"],
+          "resultPath": "$.stepResults.provisioningError",
+          "next": "RollbackProvisioning"
+        }
+      ]
+    },
+    "SendActivationNotification": {
+      "type": "Task",
+      "comment": "Send notification for device activation",
+      "activity": "NotifyActivity",
+      "input": {
+        "channel": "device",
+        "subject": "Device Ready for Activation",
+        "message": "Device provisioning complete. Waiting for activation signal.",
+        "data": {
+          "deviceId": "$.input.entityId",
+          "action": "activate"
+        }
+      },
+      "resultPath": "$.stepResults.notification",
+      "next": "WaitForActivation"
+    },
+    "WaitForActivation": {
+      "type": "Wait",
+      "comment": "Wait for device activation signal (30 min timeout)",
+      "waitForEvent": {
+        "eventType": "DeviceActivated",
+        "timeoutSeconds": 1800,
+        "matchConditions": {
+          "deviceId": "$.input.entityId"
+        }
+      },
+      "resultPath": "$.stepResults.activationEvent",
+      "next": "ConfirmActivation",
+      "catch": [
+        {
+          "errors": ["States.Timeout"],
+          "resultPath": "$.stepResults.timeoutError",
+          "next": "ActivationTimeout"
+        }
+      ]
+    },
+    "ConfirmActivation": {
+      "type": "Task",
+      "comment": "Confirm device is responding and update status",
+      "activity": "HealthCheckActivity",
+      "input": {
+        "deviceId": "$.input.entityId",
+        "checkType": "activation"
+      },
+      "resultPath": "$.stepResults.healthCheck",
+      "next": "UpdateStatusActive"
+    },
+    "UpdateStatusActive": {
+      "type": "Task",
+      "comment": "Update device status to Active",
+      "activity": "UpdateRecordActivity",
+      "input": {
+        "recordType": "Device",
+        "recordId": "$.input.entityId",
+        "data": {
+          "status": "Active",
+          "activatedAt": "$.variables.timestamp"
+        }
+      },
+      "resultPath": "$.stepResults.statusUpdate",
+      "next": "OnboardingSuccess"
+    },
+    "OnboardingSuccess": {
+      "type": "Succeed",
+      "comment": "Device onboarding completed successfully",
+      "output": {
+        "success": true,
+        "message": "Device onboarding completed successfully",
+        "deviceId": "$.input.entityId",
+        "status": "Active"
+      }
+    },
+    "ActivationTimeout": {
+      "type": "Task",
+      "comment": "Handle activation timeout",
+      "activity": "UpdateRecordActivity",
+      "input": {
+        "recordType": "Device",
+        "recordId": "$.input.entityId",
+        "data": {
+          "status": "PendingActivation",
+          "timeoutAt": "$.variables.timestamp"
+        }
+      },
+      "resultPath": "$.stepResults.timeoutUpdate",
+      "next": "OnboardingPending"
+    },
+    "OnboardingPending": {
+      "type": "Succeed",
+      "comment": "Device provisioned but awaiting activation",
+      "output": {
+        "success": true,
+        "message": "Device provisioned, awaiting manual activation",
+        "deviceId": "$.input.entityId",
+        "status": "PendingActivation"
+      }
+    },
+    "RollbackProvisioning": {
+      "type": "Compensate",
+      "comment": "Rollback all provisioning on failure",
+      "next": "OnboardingFailed"
+    },
+    "RejectDevice": {
+      "type": "Fail",
+      "comment": "Device validation failed",
+      "error": "DeviceValidationFailed",
+      "cause": "Device credentials or metadata validation failed"
+    },
+    "OnboardingFailed": {
+      "type": "Fail",
+      "comment": "Device onboarding failed after rollback",
+      "error": "OnboardingFailed",
+      "cause": "Provisioning failed and has been rolled back"
+    }
+  }
+}

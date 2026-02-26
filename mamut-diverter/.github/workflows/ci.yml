@@ -1,0 +1,37 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  services:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cd services && cargo check
+      - run: cd services && cargo test
+      - run: cd services && cargo clippy -- -D warnings
+
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get install -y cmake gcc
+      - run: cd firmware && cmake -B build -DMAMUT_PLATFORM=posix && cmake --build build
+      - run: cd firmware && cmake --build build --target test
+
+  dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cd dashboard && npm ci && npm run build
+
+  sim:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: cd sim && pip install -e ".[dev]" && pytest

@@ -1,0 +1,44 @@
+[package]
+name = "mamut-ffi"
+description = "Foreign function interface for language bindings (C, Python, etc.)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[features]
+default = []
+fault_injection = []
+
+[dependencies]
+# Internal crates
+mamut-core.workspace = true
+mamut-generator.workspace = true
+mamut-checker.workspace = true
+
+# Async
+tokio.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Error handling
+thiserror.workspace = true
+
+# Logging
+tracing.workspace = true
+
+# FFI
+uniffi.workspace = true
+
+[build-dependencies]
+cbindgen.workspace = true
+uniffi = { workspace = true, features = ["build"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

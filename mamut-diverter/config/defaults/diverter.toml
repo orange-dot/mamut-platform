@@ -1,0 +1,4 @@
+[diverter]
+type = "stub"
+activation_timeout_ms = 1000
+self_test_interval_s = 3600

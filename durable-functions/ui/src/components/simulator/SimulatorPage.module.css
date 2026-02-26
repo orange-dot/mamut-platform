@@ -1,0 +1,369 @@
+.container {
+  padding: 1.5rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: var(--text-primary);
+}
+
+.connectionStatus {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dot.connected {
+  background-color: #22c55e;
+  box-shadow: 0 0 6px #22c55e;
+}
+
+.dot.disconnected {
+  background-color: #ef4444;
+}
+
+.loading {
+  text-align: center;
+  padding: 3rem;
+  color: var(--text-secondary);
+}
+
+.error {
+  text-align: center;
+  padding: 2rem;
+}
+
+.error h3 {
+  color: #ef4444;
+  margin-bottom: 0.5rem;
+}
+
+.error p {
+  color: var(--text-secondary);
+  margin: 0.5rem 0;
+}
+
+.hint {
+  font-size: 0.875rem;
+}
+
+.retryButton {
+  margin-top: 1rem;
+  padding: 0.5rem 1.5rem;
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.retryButton:hover {
+  opacity: 0.9;
+}
+
+.card {
+  background: var(--bg-secondary, #1e1e2e);
+  border: 1px solid var(--border-color, #2d2d3d);
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.card h2 {
+  font-size: 1rem;
+  margin: 0 0 1rem 0;
+  color: var(--text-primary, #e0e0e0);
+}
+
+.errorBanner {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  border: 1px solid #fecaca;
+}
+
+/* Stats Grid */
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.statCard {
+  text-align: center;
+  padding: 1rem !important;
+}
+
+.statLabel {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.statValue {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.statValue.running {
+  color: #22c55e;
+}
+
+.statValue.paused {
+  color: #f59e0b;
+}
+
+.statValue.stopped {
+  color: #6b7280;
+}
+
+.statValue.error {
+  color: #ef4444;
+}
+
+/* Controls */
+.controlsCard {
+  margin-bottom: 1.5rem;
+}
+
+.controlsCard h2 {
+  font-size: 1rem;
+  margin: 0 0 1rem 0;
+  color: var(--text-primary);
+}
+
+.controls {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.controlButton {
+  padding: 0.5rem 1.5rem;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.controlButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.controlButton.start {
+  background: #22c55e;
+  color: white;
+}
+
+.controlButton.stop {
+  background: #ef4444;
+  color: white;
+}
+
+.controlButton.pause {
+  background: #f59e0b;
+  color: white;
+}
+
+.controlButton.resume {
+  background: #3b82f6;
+  color: white;
+}
+
+.controlButton:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Devices */
+.devicesCard {
+  margin-bottom: 1.5rem;
+}
+
+.devicesCard h2 {
+  font-size: 1rem;
+  margin: 0 0 1rem 0;
+  color: var(--text-primary);
+}
+
+.devicesGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.deviceCard {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.deviceHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.deviceDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.deviceDot.online {
+  background: #22c55e;
+}
+
+.deviceDot.offline {
+  background: #6b7280;
+}
+
+.deviceDot.error {
+  background: #ef4444;
+}
+
+.deviceName {
+  font-weight: 500;
+  color: var(--text-primary);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.deviceType {
+  font-size: 0.75rem;
+  background: var(--bg-primary);
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+  color: var(--text-secondary);
+}
+
+.deviceId {
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.deviceLocation {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  margin-bottom: 0.75rem;
+}
+
+.deviceTelemetry {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.telemetryItem {
+  font-size: 0.75rem;
+  background: var(--bg-primary);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.telemetryKey {
+  color: var(--text-secondary);
+}
+
+.telemetryValue {
+  color: var(--text-primary);
+  font-weight: 500;
+  margin-left: 0.25rem;
+}
+
+.deviceFooter {
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
+  border-top: 1px solid var(--border-color);
+  padding-top: 0.5rem;
+}
+
+/* Scenarios */
+.scenariosCard h2 {
+  font-size: 1rem;
+  margin: 0 0 1rem 0;
+  color: var(--text-primary);
+}
+
+.scenariosList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.scenarioItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+.scenarioInfo {
+  flex: 1;
+}
+
+.scenarioName {
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+
+.scenarioDescription {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.runButton {
+  padding: 0.375rem 1rem;
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.runButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.runButton:not(:disabled):hover {
+  opacity: 0.9;
+}

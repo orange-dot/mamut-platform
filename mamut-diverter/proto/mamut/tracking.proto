@@ -1,0 +1,21 @@
+syntax = "proto3";
+package mamut.tracking;
+
+import "mamut/common.proto";
+
+message ItemPosition {
+  mamut.common.ItemId item_id = 1;
+  mamut.common.ZoneId zone_id = 2;
+  mamut.common.Timestamp timestamp = 3;
+}
+
+service TrackingService {
+  rpc GetItemPosition(GetItemPositionRequest) returns (ItemPosition);
+  rpc StreamPositions(StreamPositionsRequest) returns (stream ItemPosition);
+}
+
+message GetItemPositionRequest {
+  mamut.common.ItemId item_id = 1;
+}
+
+message StreamPositionsRequest {}

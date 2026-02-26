@@ -1,0 +1,10 @@
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.services
+    command: mamut-gateway
+    volumes:
+      - ./config:/config
+    environment:
+      - RUST_LOG=debug

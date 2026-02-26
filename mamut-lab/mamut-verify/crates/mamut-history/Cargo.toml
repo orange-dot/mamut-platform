@@ -1,0 +1,46 @@
+[package]
+name = "mamut-history"
+description = "Operation history recording and event sourcing with KurrentDB"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Internal crates
+mamut-core.workspace = true
+
+# Async
+tokio.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Error handling
+thiserror.workspace = true
+anyhow.workspace = true
+
+# Logging
+tracing.workspace = true
+
+# Time
+chrono.workspace = true
+
+# Event store
+eventstore.workspace = true
+
+# Utilities
+uuid.workspace = true
+bytes.workspace = true
+crc32fast.workspace = true
+async-stream.workspace = true
+rand.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["test-util"] }

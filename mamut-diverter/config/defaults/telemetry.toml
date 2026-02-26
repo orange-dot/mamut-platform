@@ -1,0 +1,7 @@
+[telemetry]
+prometheus_listen = "0.0.0.0:9090"
+log_level = "info"
+service_name = "mamut-telemetry"
+health_default = true
+metrics_channel_capacity = 1024
+metrics_flush_interval_ms = 1000

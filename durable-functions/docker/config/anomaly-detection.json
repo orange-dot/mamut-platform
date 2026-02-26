@@ -1,0 +1,389 @@
+{
+  "id": "anomaly-detection",
+  "version": "1.0.0",
+  "name": "Telemetry Anomaly Detection Workflow",
+  "description": "Process accumulated telemetry, detect anomalies, and escalate alerts by severity",
+  "metadata": {
+    "author": "IoT Platform",
+    "tags": ["iot", "anomaly", "telemetry", "alerts"]
+  },
+  "config": {
+    "timeoutSeconds": 7200,
+    "defaultRetryPolicy": {
+      "maxAttempts": 3,
+      "initialIntervalSeconds": 1,
+      "backoffCoefficient": 2.0
+    }
+  },
+  "startAt": "GetAccumulatedEvents",
+  "states": {
+    "GetAccumulatedEvents": {
+      "type": "Task",
+      "comment": "Retrieve accumulated telemetry events from entity",
+      "activity": "GetEntityEventsActivity",
+      "input": {
+        "entityId": "$.input.entityId",
+        "eventTypes": ["TelemetryReceived", "SensorReading"],
+        "windowMinutes": 60
+      },
+      "resultPath": "$.stepResults.events",
+      "next": "AnalyzeTelemetry"
+    },
+    "AnalyzeTelemetry": {
+      "type": "Task",
+      "comment": "Analyze telemetry data for anomalies",
+      "activity": "AnalyzeTelemetryActivity",
+      "input": {
+        "deviceId": "$.input.entityId",
+        "events": "$.stepResults.events.items",
+        "thresholds": {
+          "temperature": { "min": -10, "max": 80, "rateOfChange": 5 },
+          "humidity": { "min": 0, "max": 100, "rateOfChange": 10 },
+          "pressure": { "min": 800, "max": 1200, "rateOfChange": 20 },
+          "voltage": { "min": 3.0, "max": 5.5, "rateOfChange": 0.5 }
+        }
+      },
+      "resultPath": "$.stepResults.analysis",
+      "next": "CheckAnomaly"
+    },
+    "CheckAnomaly": {
+      "type": "Choice",
+      "comment": "Check if anomaly was detected",
+      "choices": [
+        {
+          "condition": {
+            "operator": "comparison",
+            "variable": "$.stepResults.analysis.anomalyDetected",
+            "comparisonType": "Equals",
+            "value": true
+          },
+          "next": "ClassifySeverity"
+        }
+      ],
+      "default": "NoAnomalyDetected"
+    },
+    "ClassifySeverity": {
+      "type": "Choice",
+      "comment": "Route based on anomaly severity level",
+      "choices": [
+        {
+          "condition": {
+            "operator": "comparison",
+            "variable": "$.stepResults.analysis.severity",
+            "comparisonType": "Equals",
+            "value": "critical"
+          },
+          "next": "CriticalAlert"
+        },
+        {
+          "condition": {
+            "operator": "comparison",
+            "variable": "$.stepResults.analysis.severity",
+            "comparisonType": "Equals",
+            "value": "high"
+          },
+          "next": "HighAlert"
+        },
+        {
+          "condition": {
+            "operator": "comparison",
+            "variable": "$.stepResults.analysis.severity",
+            "comparisonType": "Equals",
+            "value": "medium"
+          },
+          "next": "MediumAlert"
+        }
+      ],
+      "default": "LowAlert"
+    },
+    "CriticalAlert": {
+      "type": "Parallel",
+      "comment": "Critical severity - notify all channels immediately",
+      "branches": [
+        {
+          "startAt": "NotifyTeamsCritical",
+          "states": {
+            "NotifyTeamsCritical": {
+              "type": "Task",
+              "activity": "NotifyActivity",
+              "input": {
+                "channel": "teams",
+                "subject": "CRITICAL: Device Anomaly Detected",
+                "message": "Critical anomaly detected - immediate attention required",
+                "priority": "urgent",
+                "data": {
+                  "deviceId": "$.input.entityId",
+                  "anomalyType": "$.stepResults.analysis.anomalyType",
+                  "value": "$.stepResults.analysis.currentValue",
+                  "threshold": "$.stepResults.analysis.threshold"
+                }
+              },
+              "next": "TeamsCriticalDone"
+            },
+            "TeamsCriticalDone": {
+              "type": "Succeed"
+            }
+          }
+        },
+        {
+          "startAt": "NotifyEmailCritical",
+          "states": {
+            "NotifyEmailCritical": {
+              "type": "Task",
+              "activity": "NotifyActivity",
+              "input": {
+                "channel": "email",
+                "subject": "CRITICAL: Device Anomaly - $.input.entityId",
+                "message": "Critical anomaly detected requiring immediate attention",
+                "priority": "urgent",
+                "recipients": ["oncall@company.com", "iot-alerts@company.com"]
+              },
+              "next": "EmailCriticalDone"
+            },
+            "EmailCriticalDone": {
+              "type": "Succeed"
+            }
+          }
+        },
+        {
+          "startAt": "NotifyPagerCritical",
+          "states": {
+            "NotifyPagerCritical": {
+              "type": "Task",
+              "activity": "NotifyActivity",
+              "input": {
+                "channel": "pager",
+                "subject": "CRITICAL Device Alert",
+                "message": "Device $.input.entityId critical anomaly",
+                "priority": "urgent"
+              },
+              "next": "PagerCriticalDone"
+            },
+            "PagerCriticalDone": {
+              "type": "Succeed"
+            }
+          }
+        }
+      ],
+      "resultPath": "$.stepResults.notifications",
+      "next": "TriggerImmediateAction"
+    },
+    "TriggerImmediateAction": {
+      "type": "Task",
+      "comment": "Trigger immediate automated response for critical alerts",
+      "activity": "TriggerActionActivity",
+      "input": {
+        "deviceId": "$.input.entityId",
+        "actionType": "emergency_shutdown",
+        "reason": "Critical anomaly detected"
+      },
+      "resultPath": "$.stepResults.immediateAction",
+      "next": "CreateIncidentRecord"
+    },
+    "HighAlert": {
+      "type": "Parallel",
+      "comment": "High severity - notify Teams and Email",
+      "branches": [
+        {
+          "startAt": "NotifyTeamsHigh",
+          "states": {
+            "NotifyTeamsHigh": {
+              "type": "Task",
+              "activity": "NotifyActivity",
+              "input": {
+                "channel": "teams",
+                "subject": "HIGH: Device Anomaly Detected",
+                "message": "High severity anomaly requires attention",
+                "priority": "high",
+                "data": {
+                  "deviceId": "$.input.entityId",
+                  "anomalyType": "$.stepResults.analysis.anomalyType"
+                }
+              },
+              "next": "TeamsHighDone"
+            },
+            "TeamsHighDone": {
+              "type": "Succeed"
+            }
+          }
+        },
+        {
+          "startAt": "NotifyEmailHigh",
+          "states": {
+            "NotifyEmailHigh": {
+              "type": "Task",
+              "activity": "NotifyActivity",
+              "input": {
+                "channel": "email",
+                "subject": "HIGH: Device Anomaly - $.input.entityId",
+                "message": "High severity anomaly detected",
+                "priority": "high",
+                "recipients": ["iot-alerts@company.com"]
+              },
+              "next": "EmailHighDone"
+            },
+            "EmailHighDone": {
+              "type": "Succeed"
+            }
+          }
+        }
+      ],
+      "resultPath": "$.stepResults.notifications",
+      "next": "CreateIncidentRecord"
+    },
+    "MediumAlert": {
+      "type": "Task",
+      "comment": "Medium severity - notify Teams only",
+      "activity": "NotifyActivity",
+      "input": {
+        "channel": "teams",
+        "subject": "MEDIUM: Device Anomaly Detected",
+        "message": "Medium severity anomaly detected",
+        "priority": "normal",
+        "data": {
+          "deviceId": "$.input.entityId",
+          "anomalyType": "$.stepResults.analysis.anomalyType"
+        }
+      },
+      "resultPath": "$.stepResults.notifications",
+      "next": "CreateIncidentRecord"
+    },
+    "LowAlert": {
+      "type": "Task",
+      "comment": "Low severity - log only",
+      "activity": "NotifyActivity",
+      "input": {
+        "channel": "log",
+        "subject": "LOW: Device Anomaly Logged",
+        "message": "Low severity anomaly logged for review",
+        "data": {
+          "deviceId": "$.input.entityId",
+          "anomalyType": "$.stepResults.analysis.anomalyType"
+        }
+      },
+      "resultPath": "$.stepResults.notifications",
+      "next": "CreateIncidentRecord"
+    },
+    "CreateIncidentRecord": {
+      "type": "Task",
+      "comment": "Create incident record for tracking",
+      "activity": "CreateRecordActivity",
+      "input": {
+        "recordType": "Incident",
+        "idempotencyKey": "$.input.idempotencyKey",
+        "data": {
+          "deviceId": "$.input.entityId",
+          "incidentType": "anomaly",
+          "severity": "$.stepResults.analysis.severity",
+          "anomalyType": "$.stepResults.analysis.anomalyType",
+          "detectedValue": "$.stepResults.analysis.currentValue",
+          "threshold": "$.stepResults.analysis.threshold",
+          "status": "Open",
+          "createdAt": "$.variables.timestamp"
+        }
+      },
+      "resultPath": "$.stepResults.incident",
+      "next": "WaitForAcknowledgment"
+    },
+    "WaitForAcknowledgment": {
+      "type": "Wait",
+      "comment": "Wait for human acknowledgment (1 hour timeout)",
+      "waitForEvent": {
+        "eventType": "IncidentAcknowledged",
+        "timeoutSeconds": 3600,
+        "matchConditions": {
+          "incidentId": "$.stepResults.incident.recordId"
+        }
+      },
+      "resultPath": "$.stepResults.acknowledgment",
+      "next": "UpdateIncidentAcknowledged",
+      "catch": [
+        {
+          "errors": ["States.Timeout"],
+          "resultPath": "$.stepResults.ackTimeout",
+          "next": "EscalateUnacknowledged"
+        }
+      ]
+    },
+    "EscalateUnacknowledged": {
+      "type": "Task",
+      "comment": "Escalate unacknowledged incident",
+      "activity": "NotifyActivity",
+      "input": {
+        "channel": "pager",
+        "subject": "ESCALATION: Unacknowledged Incident",
+        "message": "Incident for device $.input.entityId not acknowledged within SLA",
+        "priority": "high",
+        "data": {
+          "incidentId": "$.stepResults.incident.recordId",
+          "escalationLevel": 2
+        }
+      },
+      "resultPath": "$.stepResults.escalation",
+      "next": "UpdateIncidentEscalated"
+    },
+    "UpdateIncidentEscalated": {
+      "type": "Task",
+      "comment": "Update incident status to escalated",
+      "activity": "UpdateRecordActivity",
+      "input": {
+        "recordType": "Incident",
+        "recordId": "$.stepResults.incident.recordId",
+        "data": {
+          "status": "Escalated",
+          "escalatedAt": "$.variables.timestamp"
+        }
+      },
+      "resultPath": "$.stepResults.escalationUpdate",
+      "next": "ClearAccumulatedEvents"
+    },
+    "UpdateIncidentAcknowledged": {
+      "type": "Task",
+      "comment": "Update incident status to acknowledged",
+      "activity": "UpdateRecordActivity",
+      "input": {
+        "recordType": "Incident",
+        "recordId": "$.stepResults.incident.recordId",
+        "data": {
+          "status": "Acknowledged",
+          "acknowledgedAt": "$.variables.timestamp",
+          "acknowledgedBy": "$.stepResults.acknowledgment.userId"
+        }
+      },
+      "resultPath": "$.stepResults.ackUpdate",
+      "next": "ClearAccumulatedEvents"
+    },
+    "ClearAccumulatedEvents": {
+      "type": "Task",
+      "comment": "Clear processed events from entity accumulator",
+      "activity": "ClearEntityEventsActivity",
+      "input": {
+        "entityId": "$.input.entityId",
+        "processedUpTo": "$.stepResults.events.latestTimestamp"
+      },
+      "resultPath": "$.stepResults.clearEvents",
+      "next": "AnomalyHandled"
+    },
+    "NoAnomalyDetected": {
+      "type": "Succeed",
+      "comment": "No anomaly detected in telemetry",
+      "output": {
+        "success": true,
+        "message": "Telemetry analysis complete - no anomalies detected",
+        "deviceId": "$.input.entityId",
+        "eventsProcessed": "$.stepResults.events.count"
+      }
+    },
+    "AnomalyHandled": {
+      "type": "Succeed",
+      "comment": "Anomaly detection and handling complete",
+      "output": {
+        "success": true,
+        "message": "Anomaly detected and handled",
+        "deviceId": "$.input.entityId",
+        "incidentId": "$.stepResults.incident.recordId",
+        "severity": "$.stepResults.analysis.severity"
+      }
+    }
+  }
+}

@@ -1,0 +1,37 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/mamut-core",
+    "crates/mamut-proto",
+    "crates/mamut-conveyor",
+    "crates/mamut-diverter",
+    "crates/mamut-identification",
+    "crates/mamut-wms",
+    "crates/mamut-postal",
+    "crates/mamut-transport",
+    "crates/mamut-alarm",
+    "crates/mamut-telemetry",
+    "binaries/mamut-gateway",
+    "binaries/mamut-controller",
+    "binaries/mamut-wms-bridge",
+    "binaries/mamut-postal-bridge",
+]
+
+[workspace.package]
+edition = "2021"
+authors = ["Elektrokombinacija"]
+license = "AGPL-3.0-or-later"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+tonic = "0.12"
+prost = "0.13"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+thiserror = "2"
+anyhow = "1"
+tonic-build = "0.12"
+prost-build = "0.13"
+toml = "0.8"

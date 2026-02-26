@@ -1,0 +1,8 @@
+services:
+  sim:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.sim
+    command: python -m mamut_sim
+    volumes:
+      - ./sim/layouts:/app/layouts

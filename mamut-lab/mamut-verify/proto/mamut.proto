@@ -1,0 +1,599 @@
+// MAMUT Verification Harness Protocol Buffer definitions
+// Defines gRPC communication between Controller and Agents
+
+syntax = "proto3";
+
+package mamut.v1;
+
+option go_package = "github.com/mamut-lab/mamut/mamut-verify/proto;mamutpb";
+option java_package = "com.mamut.proto.v1";
+option java_multiple_files = true;
+
+import "ovc.proto";
+
+// =============================================================================
+// AgentService - Controller to Agent communication
+// =============================================================================
+
+service AgentService {
+  // Execute an operation on the target system
+  rpc Execute(ExecuteRequest) returns (ExecuteResponse);
+
+  // Apply a fault injection to the agent/target
+  rpc ApplyFault(ApplyFaultRequest) returns (ApplyFaultResponse);
+
+  // Recover from a previously applied fault
+  rpc RecoverFault(RecoverFaultRequest) returns (RecoverFaultResponse);
+
+  // Health check for agent liveness
+  rpc Health(HealthRequest) returns (HealthResponse);
+
+  // Stream timing events from agent to controller for analysis
+  rpc StreamTimingEvents(StreamTimingRequest) returns (stream TimingEvent);
+
+  // Synchronize OVC clocks between controller and agent
+  rpc SyncClock(SyncClockRequest) returns (SyncClockResponse);
+}
+
+// =============================================================================
+// Execute Operation Messages
+// =============================================================================
+
+message ExecuteRequest {
+  // Unique identifier for this execution request
+  string request_id = 1;
+
+  // Operation to execute
+  Operation operation = 2;
+
+  // OVC timestamp from controller when request was issued
+  OVC issued_at = 3;
+
+  // Timeout for the operation (nanoseconds)
+  uint64 timeout_ns = 4;
+
+  // Whether to record detailed timing information
+  bool record_timing = 5;
+
+  // Execution context/metadata
+  map<string, string> context = 6;
+}
+
+message ExecuteResponse {
+  // Echoed request ID
+  string request_id = 1;
+
+  // OVC timestamp when agent received the request
+  OVC received_at = 2;
+
+  // OVC timestamp when operation completed
+  OVC completed_at = 3;
+
+  // Outcome of the operation
+  OperationOutcome outcome = 4;
+
+  // Detailed timing breakdown (if record_timing was true)
+  TimingBreakdown timing = 5;
+}
+
+// Operation represents a single operation to execute
+message Operation {
+  // Type of operation (e.g., "read", "write", "cas", "delete")
+  string op_type = 1;
+
+  // Target key/resource
+  string key = 2;
+
+  // Value for write operations
+  bytes value = 3;
+
+  // Expected value for CAS operations
+  bytes expected_value = 4;
+
+  // Additional operation parameters
+  map<string, string> params = 5;
+
+  // Consistency level required
+  ConsistencyLevel consistency = 6;
+}
+
+enum ConsistencyLevel {
+  CONSISTENCY_LEVEL_UNSPECIFIED = 0;
+  CONSISTENCY_LEVEL_EVENTUAL = 1;
+  CONSISTENCY_LEVEL_CAUSAL = 2;
+  CONSISTENCY_LEVEL_SEQUENTIAL = 3;
+  CONSISTENCY_LEVEL_LINEARIZABLE = 4;
+}
+
+// OperationOutcome represents the result of an operation execution
+message OperationOutcome {
+  oneof result {
+    // Successful result with value
+    OkValue ok_value = 1;
+
+    // Operation failed with error
+    OperationError error = 2;
+
+    // Operation timed out
+    TimeoutInfo timeout = 3;
+
+    // Agent/process crashed during operation
+    CrashInfo crashed = 4;
+  }
+}
+
+message OkValue {
+  // Returned value (if any)
+  bytes value = 1;
+
+  // Whether the operation modified state
+  bool modified = 2;
+
+  // Version/revision after operation
+  uint64 version = 3;
+
+  // Additional result metadata
+  map<string, string> metadata = 4;
+}
+
+message OperationError {
+  // Error code
+  string code = 1;
+
+  // Human-readable error message
+  string message = 2;
+
+  // Whether the operation may have partially succeeded
+  bool may_have_succeeded = 3;
+
+  // Whether the operation is retriable
+  bool retriable = 4;
+}
+
+message TimeoutInfo {
+  // How long the operation ran before timeout (nanoseconds)
+  uint64 elapsed_ns = 1;
+
+  // Configured timeout value (nanoseconds)
+  uint64 timeout_ns = 2;
+
+  // Whether the operation may have succeeded after timeout
+  bool may_have_succeeded = 3;
+}
+
+message CrashInfo {
+  // Crash reason/signal if known
+  string reason = 1;
+
+  // Exit code if available
+  int32 exit_code = 2;
+
+  // Stack trace if available
+  string stack_trace = 3;
+
+  // Whether state may be corrupted
+  bool state_may_be_corrupted = 4;
+}
+
+message TimingBreakdown {
+  // Time spent in queue before execution
+  uint64 queue_time_ns = 1;
+
+  // Time spent executing the operation
+  uint64 execution_time_ns = 2;
+
+  // Network round-trip time (for remote operations)
+  uint64 network_rtt_ns = 3;
+
+  // Time spent waiting for locks/coordination
+  uint64 coordination_time_ns = 4;
+
+  // Time spent in storage I/O
+  uint64 storage_time_ns = 5;
+}
+
+// =============================================================================
+// Fault Injection Messages
+// =============================================================================
+
+message ApplyFaultRequest {
+  // Unique identifier for this fault
+  string fault_id = 1;
+
+  // Type of fault to inject
+  FaultType fault_type = 2;
+
+  // Target of the fault
+  FaultTarget target = 3;
+
+  // Fault-specific configuration
+  FaultConfig config = 4;
+
+  // OVC timestamp when fault should take effect
+  OVC effective_at = 5;
+
+  // Duration of the fault (0 = until explicitly recovered)
+  uint64 duration_ns = 6;
+}
+
+message ApplyFaultResponse {
+  // Echoed fault ID
+  string fault_id = 1;
+
+  // Whether fault was successfully applied
+  bool applied = 2;
+
+  // OVC timestamp when fault became active
+  OVC active_at = 3;
+
+  // Error message if not applied
+  string error = 4;
+}
+
+message RecoverFaultRequest {
+  // Fault ID to recover from
+  string fault_id = 1;
+
+  // OVC timestamp for recovery coordination
+  OVC recover_at = 2;
+
+  // Whether to force immediate recovery
+  bool force = 3;
+}
+
+message RecoverFaultResponse {
+  // Echoed fault ID
+  string fault_id = 1;
+
+  // Whether recovery was successful
+  bool recovered = 2;
+
+  // OVC timestamp when recovery completed
+  OVC recovered_at = 3;
+
+  // Error message if recovery failed
+  string error = 4;
+}
+
+enum FaultType {
+  FAULT_TYPE_UNSPECIFIED = 0;
+
+  // Network-related faults
+  FAULT_TYPE_NETWORK_PARTITION = 1;    // Complete network isolation
+  FAULT_TYPE_NETWORK_DELAY = 2;        // Added latency to network calls
+  FAULT_TYPE_NETWORK_PACKET_LOSS = 3;  // Random packet drops
+  FAULT_TYPE_NETWORK_CORRUPTION = 4;   // Corrupt network packets
+  FAULT_TYPE_NETWORK_REORDER = 5;      // Reorder network packets
+
+  // Clock-related faults
+  FAULT_TYPE_CLOCK_SKEW = 6;           // Drift the local clock
+  FAULT_TYPE_CLOCK_JUMP = 7;           // Sudden clock jump forward/backward
+  FAULT_TYPE_CLOCK_FREEZE = 8;         // Freeze the clock
+
+  // Process-related faults
+  FAULT_TYPE_PROCESS_PAUSE = 9;        // SIGSTOP the process
+  FAULT_TYPE_PROCESS_KILL = 10;        // Kill the process
+  FAULT_TYPE_PROCESS_SLOW = 11;        // CPU throttling
+
+  // Storage-related faults
+  FAULT_TYPE_STORAGE_SLOW = 12;        // Slow down I/O operations
+  FAULT_TYPE_STORAGE_FAIL = 13;        // Fail I/O operations
+  FAULT_TYPE_STORAGE_CORRUPT = 14;     // Corrupt stored data
+  FAULT_TYPE_STORAGE_FULL = 15;        // Simulate disk full
+
+  // Memory-related faults
+  FAULT_TYPE_MEMORY_PRESSURE = 16;     // Reduce available memory
+  FAULT_TYPE_MEMORY_LEAK = 17;         // Simulate memory leak
+}
+
+message FaultTarget {
+  // Target node/agent ID
+  string node_id = 1;
+
+  // For network faults: target peer nodes
+  repeated string peer_node_ids = 2;
+
+  // Target process name/pattern
+  string process_pattern = 3;
+
+  // Target file/directory path (for storage faults)
+  string path_pattern = 4;
+
+  // Target network port (for network faults)
+  uint32 port = 5;
+
+  // Target network interface
+  string interface = 6;
+}
+
+message FaultConfig {
+  // Network delay configuration
+  NetworkDelayConfig network_delay = 1;
+
+  // Clock skew configuration
+  ClockSkewConfig clock_skew = 2;
+
+  // Packet loss configuration
+  PacketLossConfig packet_loss = 3;
+
+  // Storage slow configuration
+  StorageSlowConfig storage_slow = 4;
+
+  // Generic key-value configuration
+  map<string, string> params = 10;
+}
+
+message NetworkDelayConfig {
+  // Base delay to add (nanoseconds)
+  uint64 delay_ns = 1;
+
+  // Jitter/variance (nanoseconds)
+  uint64 jitter_ns = 2;
+
+  // Distribution type (uniform, normal, pareto)
+  string distribution = 3;
+
+  // Correlation with previous delay (0.0 to 1.0)
+  double correlation = 4;
+}
+
+message ClockSkewConfig {
+  // Skew amount (positive = ahead, negative = behind) in nanoseconds
+  int64 skew_ns = 1;
+
+  // Drift rate (nanoseconds per second)
+  int64 drift_rate = 2;
+
+  // Whether to apply skew gradually
+  bool gradual = 3;
+}
+
+message PacketLossConfig {
+  // Probability of packet loss (0.0 to 1.0)
+  double loss_rate = 1;
+
+  // Correlation with previous loss (0.0 to 1.0)
+  double correlation = 2;
+
+  // Whether to lose packets in bursts
+  bool bursty = 3;
+
+  // Average burst length (if bursty)
+  uint32 burst_length = 4;
+}
+
+message StorageSlowConfig {
+  // Delay for read operations (nanoseconds)
+  uint64 read_delay_ns = 1;
+
+  // Delay for write operations (nanoseconds)
+  uint64 write_delay_ns = 2;
+
+  // Delay for fsync operations (nanoseconds)
+  uint64 fsync_delay_ns = 3;
+}
+
+// =============================================================================
+// Health Check Messages
+// =============================================================================
+
+message HealthRequest {
+  // Whether to perform deep health check
+  bool deep_check = 1;
+}
+
+message HealthResponse {
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    STATUS_HEALTHY = 1;
+    STATUS_DEGRADED = 2;
+    STATUS_UNHEALTHY = 3;
+  }
+
+  Status status = 1;
+
+  // Current OVC clock state
+  ClockState clock_state = 2;
+
+  // Active faults on this agent
+  repeated string active_fault_ids = 3;
+
+  // Resource usage information
+  ResourceUsage resources = 4;
+
+  // Detailed health check results
+  map<string, string> details = 5;
+}
+
+message ResourceUsage {
+  // CPU usage percentage (0-100)
+  double cpu_percent = 1;
+
+  // Memory usage in bytes
+  uint64 memory_bytes = 2;
+
+  // Available memory in bytes
+  uint64 memory_available_bytes = 3;
+
+  // Disk usage in bytes
+  uint64 disk_bytes = 4;
+
+  // Available disk in bytes
+  uint64 disk_available_bytes = 5;
+
+  // Number of open file descriptors
+  uint32 open_fds = 6;
+
+  // Number of active goroutines/threads
+  uint32 active_threads = 7;
+}
+
+// =============================================================================
+// Timing Event Streaming Messages
+// =============================================================================
+
+message StreamTimingRequest {
+  // Types of events to stream
+  repeated TimingEventType event_types = 1;
+
+  // Minimum OVC to start streaming from
+  OVC start_from = 2;
+
+  // Whether to include historical events
+  bool include_historical = 3;
+
+  // Buffer size hint for batching
+  uint32 buffer_size = 4;
+}
+
+message TimingEvent {
+  // Unique event identifier
+  string event_id = 1;
+
+  // Type of timing event
+  TimingEventType event_type = 2;
+
+  // OVC timestamp when event occurred
+  OVC timestamp = 3;
+
+  // Node/agent where event occurred
+  string node_id = 4;
+
+  // Related operation request ID (if applicable)
+  string request_id = 5;
+
+  // Event-specific payload
+  oneof payload {
+    OperationTimingEvent operation = 10;
+    FaultTimingEvent fault = 11;
+    ClockTimingEvent clock = 12;
+    NetworkTimingEvent network = 13;
+    SystemTimingEvent system = 14;
+  }
+}
+
+enum TimingEventType {
+  TIMING_EVENT_TYPE_UNSPECIFIED = 0;
+
+  // Operation lifecycle events
+  TIMING_EVENT_TYPE_OPERATION_STARTED = 1;
+  TIMING_EVENT_TYPE_OPERATION_COMPLETED = 2;
+  TIMING_EVENT_TYPE_OPERATION_FAILED = 3;
+
+  // Fault lifecycle events
+  TIMING_EVENT_TYPE_FAULT_APPLIED = 4;
+  TIMING_EVENT_TYPE_FAULT_RECOVERED = 5;
+
+  // Clock events
+  TIMING_EVENT_TYPE_CLOCK_SYNC = 6;
+  TIMING_EVENT_TYPE_CLOCK_DRIFT = 7;
+
+  // Network events
+  TIMING_EVENT_TYPE_MESSAGE_SENT = 8;
+  TIMING_EVENT_TYPE_MESSAGE_RECEIVED = 9;
+  TIMING_EVENT_TYPE_MESSAGE_DROPPED = 10;
+
+  // System events
+  TIMING_EVENT_TYPE_PROCESS_STARTED = 11;
+  TIMING_EVENT_TYPE_PROCESS_STOPPED = 12;
+  TIMING_EVENT_TYPE_RESOURCE_EXHAUSTED = 13;
+}
+
+message OperationTimingEvent {
+  // Operation type
+  string op_type = 1;
+
+  // Target key
+  string key = 2;
+
+  // Phase within operation execution
+  string phase = 3;
+
+  // Duration of this phase (nanoseconds)
+  uint64 duration_ns = 4;
+}
+
+message FaultTimingEvent {
+  // Fault ID
+  string fault_id = 1;
+
+  // Fault type
+  FaultType fault_type = 2;
+
+  // Whether fault became active or inactive
+  bool active = 3;
+}
+
+message ClockTimingEvent {
+  // Previous OVC value
+  OVC previous = 1;
+
+  // New OVC value
+  OVC current = 2;
+
+  // Reason for clock event (sync, drift, jump)
+  string reason = 3;
+}
+
+message NetworkTimingEvent {
+  // Source node
+  string source_node = 1;
+
+  // Destination node
+  string dest_node = 2;
+
+  // Message size in bytes
+  uint64 message_bytes = 3;
+
+  // Network latency (nanoseconds)
+  uint64 latency_ns = 4;
+
+  // Whether message was dropped
+  bool dropped = 5;
+}
+
+message SystemTimingEvent {
+  // System event type (process, resource, etc.)
+  string event_type = 1;
+
+  // Resource affected
+  string resource = 2;
+
+  // Event details
+  map<string, string> details = 3;
+}
+
+// =============================================================================
+// Clock Synchronization Messages
+// =============================================================================
+
+message SyncClockRequest {
+  // Controller's current OVC
+  OVC controller_clock = 1;
+
+  // Sequence number for RTT estimation
+  uint64 sequence = 2;
+
+  // Controller's send timestamp (nanoseconds, monotonic)
+  int64 send_time_ns = 3;
+}
+
+message SyncClockResponse {
+  // Agent's current OVC before sync
+  OVC agent_clock_before = 1;
+
+  // Agent's OVC after sync
+  OVC agent_clock_after = 2;
+
+  // Echoed sequence number
+  uint64 sequence = 3;
+
+  // Agent's receive timestamp (nanoseconds, monotonic)
+  int64 receive_time_ns = 4;
+
+  // Agent's send timestamp (nanoseconds, monotonic)
+  int64 send_time_ns = 5;
+
+  // Estimated clock offset from controller (nanoseconds)
+  int64 offset_estimate_ns = 6;
+}

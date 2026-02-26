@@ -1,0 +1,18 @@
+[package]
+name = "mamut-controller"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+mamut-core = { path = "../../crates/mamut-core" }
+mamut-conveyor = { path = "../../crates/mamut-conveyor" }
+mamut-diverter = { path = "../../crates/mamut-diverter" }
+mamut-identification = { path = "../../crates/mamut-identification" }
+mamut-transport = { path = "../../crates/mamut-transport" }
+mamut-alarm = { path = "../../crates/mamut-alarm" }
+mamut-telemetry = { path = "../../crates/mamut-telemetry" }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

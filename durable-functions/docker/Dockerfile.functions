@@ -1,0 +1,49 @@
+# =============================================================================
+# Dockerfile for Azure Functions (Isolated Worker - .NET 9)
+# Purpose: Build and run the Orchestration.Functions project
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Stage 1: Build
+# -----------------------------------------------------------------------------
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
+
+# Copy solution and project files first (for layer caching)
+COPY src/Orchestration.sln ./
+COPY src/Orchestration.Core/Orchestration.Core.csproj ./Orchestration.Core/
+COPY src/Orchestration.Infrastructure/Orchestration.Infrastructure.csproj ./Orchestration.Infrastructure/
+COPY src/Orchestration.Functions/Orchestration.Functions.csproj ./Orchestration.Functions/
+
+# Restore dependencies
+RUN dotnet restore ./Orchestration.Functions/Orchestration.Functions.csproj
+
+# Copy remaining source code
+COPY src/Orchestration.Core/ ./Orchestration.Core/
+COPY src/Orchestration.Infrastructure/ ./Orchestration.Infrastructure/
+COPY src/Orchestration.Functions/ ./Orchestration.Functions/
+
+# Build and publish
+WORKDIR /src/Orchestration.Functions
+RUN dotnet publish -c Release -o /app/publish --no-restore
+
+# -----------------------------------------------------------------------------
+# Stage 2: Runtime
+# -----------------------------------------------------------------------------
+FROM mcr.microsoft.com/azure-functions/dotnet-isolated:4-dotnet-isolated9.0 AS runtime
+WORKDIR /home/site/wwwroot
+
+# Copy published output
+COPY --from=build /app/publish .
+
+# Environment variables for Azure Functions
+ENV AzureFunctionsJobHost__Logging__Console__IsEnabled=true
+ENV FUNCTIONS_WORKER_RUNTIME=dotnet-isolated
+
+# The Azure Functions runtime will handle port binding
+# Default port is 80 in the base image
+
+# Health check - verify the functions host is responding
+# Using the built-in runtime status endpoint
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+  CMD curl -f http://localhost:80/admin/host/status || exit 1

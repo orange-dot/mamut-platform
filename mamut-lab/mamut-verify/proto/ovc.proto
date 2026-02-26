@@ -1,0 +1,92 @@
+// OVC (Observed Virtual Clock) Protocol Buffer definitions
+// Used for hybrid logical clock synchronization in the verification harness
+
+syntax = "proto3";
+
+package mamut.v1;
+
+option go_package = "github.com/mamut-lab/mamut/mamut-verify/proto;mamutpb";
+option java_package = "com.mamut.proto.v1";
+option java_multiple_files = true;
+
+// OVC (Observed Virtual Clock) represents a hybrid logical clock value
+// that combines physical time observation with logical ordering
+message OVC {
+  // Physical time observed by the controller (nanoseconds since epoch)
+  int64 controller_time = 1;
+
+  // Physical time observed at the node/agent (nanoseconds since epoch)
+  int64 observed_time = 2;
+
+  // Logical clock component for causal ordering
+  uint64 logical_time = 3;
+
+  // Uncertainty bound in nanoseconds (clock drift, network latency)
+  uint64 uncertainty = 4;
+}
+
+// ClockState represents the full state of an OVC clock at a node
+message ClockState {
+  // Current OVC value
+  OVC current = 1;
+
+  // Maximum observed drift from controller time (nanoseconds)
+  int64 max_drift = 2;
+
+  // Number of sync events since last reset
+  uint64 sync_count = 3;
+
+  // Whether the clock is considered synchronized
+  bool synchronized = 4;
+}
+
+// ClockSyncConfig configures clock synchronization behavior
+message ClockSyncConfig {
+  // Maximum allowed uncertainty before forcing resync (nanoseconds)
+  uint64 max_uncertainty = 1;
+
+  // Interval between sync attempts (nanoseconds)
+  uint64 sync_interval = 2;
+
+  // Number of samples to use for drift estimation
+  uint32 drift_samples = 3;
+
+  // Whether to use NTP-style round-trip time estimation
+  bool use_rtt_estimation = 4;
+}
+
+// ClockComparison represents the result of comparing two OVC values
+message ClockComparison {
+  enum Ordering {
+    ORDERING_UNSPECIFIED = 0;
+    ORDERING_BEFORE = 1;      // First clock is causally before second
+    ORDERING_AFTER = 2;       // First clock is causally after second
+    ORDERING_CONCURRENT = 3;  // Clocks are concurrent (no causal relation)
+    ORDERING_EQUAL = 4;       // Clocks are equal
+  }
+
+  Ordering ordering = 1;
+
+  // Confidence in the ordering (0.0 to 1.0), affected by uncertainty
+  double confidence = 2;
+}
+
+// HappensBefore represents a causal relationship between events
+message HappensBefore {
+  // Event that happened first
+  string before_event_id = 1;
+  OVC before_clock = 2;
+
+  // Event that happened after
+  string after_event_id = 3;
+  OVC after_clock = 4;
+
+  // Whether this is a definite ordering or probabilistic
+  bool definite = 5;
+}
+
+// CausalChain represents a sequence of causally related events
+message CausalChain {
+  repeated string event_ids = 1;
+  repeated OVC clocks = 2;
+}

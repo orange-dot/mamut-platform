@@ -1,0 +1,80 @@
+# Device Onboarding Scenario
+# Simulates a complete device onboarding flow with telemetry
+
+name: device-onboarding
+description: Simulates a new device connecting, sending telemetry, and activating
+
+steps:
+  - name: Device Connected
+    deviceId: sensor-temp-001
+    eventType: DeviceConnected
+    payload:
+      deviceType: sensor
+      firmwareVersion: "1.0.0"
+      capabilities:
+        - temperature
+        - humidity
+      location: "Building A, Floor 1"
+    delayMs: 0
+
+  - name: Initial Telemetry 1
+    deviceId: sensor-temp-001
+    eventType: TelemetryReceived
+    payload:
+      temperature: 22.5
+      humidity: 45.0
+      batteryLevel: 98
+    delayMs: 2000
+
+  - name: Initial Telemetry 2
+    deviceId: sensor-temp-001
+    eventType: TelemetryReceived
+    payload:
+      temperature: 22.8
+      humidity: 44.5
+      batteryLevel: 98
+    delayMs: 2000
+
+  - name: Initial Telemetry 3
+    deviceId: sensor-temp-001
+    eventType: TelemetryReceived
+    payload:
+      temperature: 23.0
+      humidity: 44.0
+      batteryLevel: 97
+    delayMs: 2000
+
+  - name: Initial Telemetry 4
+    deviceId: sensor-temp-001
+    eventType: TelemetryReceived
+    payload:
+      temperature: 22.7
+      humidity: 45.5
+      batteryLevel: 97
+    delayMs: 2000
+
+  - name: Initial Telemetry 5
+    deviceId: sensor-temp-001
+    eventType: TelemetryReceived
+    payload:
+      temperature: 22.9
+      humidity: 45.2
+      batteryLevel: 97
+    delayMs: 2000
+
+  - name: Device Activated
+    deviceId: sensor-temp-001
+    eventType: DeviceActivated
+    payload:
+      activatedBy: system
+      activationMethod: auto
+      provisioningStatus: complete
+    delayMs: 1000
+
+  - name: Device Online
+    deviceId: sensor-temp-001
+    eventType: DeviceOnline
+    payload:
+      firmwareVersion: "1.0.0"
+      status: active
+    delayMs: 500

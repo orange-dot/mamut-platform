@@ -1,0 +1,330 @@
+# IoT Device Simulator Configuration
+
+servicebus:
+  # Connection string is set via SERVICEBUS_CONNECTION_STRING environment variable
+  connectionString: ""
+  queueName: "device-events"
+  useMock: false  # Set to true for development without Service Bus
+
+simulator:
+  mode: "random"        # constant, random, scenario, burst
+  intervalMs: 5000      # Telemetry interval in milliseconds
+  jitterMs: 1000        # Random jitter for random mode
+  burstSize: 10         # Events per burst in burst mode
+  burstIntervalMs: 100  # Delay between burst events
+  autoStart: true       # Start simulation automatically
+
+api:
+  port: 8080
+  readTimeout: 15s
+  writeTimeout: 15s
+  shutdownTimeout: 30s
+
+logging:
+  level: "info"         # debug, info, warn, error
+  format: "json"        # json, console
+
+# Device definitions
+devices:
+  # Temperature & Humidity Sensors
+  - id: "sensor-temp-001"
+    name: "Building A - Floor 1 Temperature"
+    type: "sensor"
+    enabled: true
+    location: "Building A, Floor 1, Room 101"
+    tags:
+      building: "A"
+      floor: "1"
+      zone: "office"
+    telemetry:
+      - field: temperature
+        type: float
+        min: 18.0
+        max: 32.0
+        unit: celsius
+        noisePercent: 2
+      - field: humidity
+        type: float
+        min: 30.0
+        max: 70.0
+        unit: percent
+        noisePercent: 3
+      - field: batteryLevel
+        type: float
+        min: 0
+        max: 100
+        unit: percent
+        trendRate: -0.01  # Slow battery drain
+    events:
+      - type: TelemetryReceived
+        interval: 5000
+      - type: ThresholdExceeded
+        condition: "temperature > 28"
+      - type: LowBattery
+        condition: "batteryLevel < 20"
+
+  - id: "sensor-temp-002"
+    name: "Building A - Floor 2 Temperature"
+    type: "sensor"
+    enabled: true
+    location: "Building A, Floor 2, Room 201"
+    tags:
+      building: "A"
+      floor: "2"
+      zone: "office"
+    telemetry:
+      - field: temperature
+        type: float
+        min: 19.0
+        max: 30.0
+        unit: celsius
+        noisePercent: 2
+      - field: humidity
+        type: float
+        min: 35.0
+        max: 65.0
+        unit: percent
+        noisePercent: 2
+    events:
+      - type: TelemetryReceived
+        interval: 5000
+
+  # Motion Detectors
+  - id: "sensor-motion-001"
+    name: "Entrance Motion Detector"
+    type: "sensor"
+    enabled: true
+    location: "Building A, Main Entrance"
+    tags:
+      building: "A"
+      type: "security"
+    telemetry:
+      - field: motionDetected
+        type: bool
+        defaultValue: false
+      - field: lastMotionTime
+        type: string
+        defaultValue: ""
+      - field: batteryLevel
+        type: float
+        min: 0
+        max: 100
+        unit: percent
+    events:
+      - type: TelemetryReceived
+        interval: 10000
+      - type: MotionDetected
+        condition: "motionDetected == true"
+
+  # Power Meters
+  - id: "meter-power-001"
+    name: "Main Power Meter"
+    type: "sensor"
+    enabled: true
+    location: "Building A, Utility Room"
+    tags:
+      building: "A"
+      type: "utility"
+    telemetry:
+      - field: powerConsumption
+        type: float
+        min: 500
+        max: 5000
+        unit: watts
+        noisePercent: 5
+      - field: voltage
+        type: float
+        min: 118
+        max: 125
+        unit: volts
+        noisePercent: 1
+      - field: current
+        type: float
+        min: 5
+        max: 45
+        unit: amps
+        noisePercent: 3
+      - field: powerFactor
+        type: float
+        min: 0.85
+        max: 0.99
+        unit: ratio
+    events:
+      - type: TelemetryReceived
+        interval: 3000
+      - type: ThresholdExceeded
+        condition: "powerConsumption > 4500"
+      - type: AnomalyDetected
+        condition: "voltage < 110 || voltage > 130"
+
+  # HVAC Controllers
+  - id: "hvac-001"
+    name: "HVAC Unit - Building A"
+    type: "actuator"
+    enabled: true
+    location: "Building A, Rooftop"
+    tags:
+      building: "A"
+      type: "hvac"
+    telemetry:
+      - field: setpoint
+        type: float
+        min: 18
+        max: 28
+        unit: celsius
+        defaultValue: 22.0
+      - field: currentTemp
+        type: float
+        min: 16
+        max: 32
+        unit: celsius
+        noisePercent: 1
+      - field: mode
+        type: string
+        defaultValue: "auto"
+      - field: fanSpeed
+        type: int
+        min: 0
+        max: 100
+        unit: percent
+        defaultValue: 50
+      - field: compressorStatus
+        type: bool
+        defaultValue: true
+      - field: filterStatus
+        type: string
+        defaultValue: "good"
+    events:
+      - type: TelemetryReceived
+        interval: 15000
+      - type: CommandReceived
+      - type: MaintenanceRequired
+        condition: "filterStatus == 'replace'"
+
+  - id: "hvac-002"
+    name: "HVAC Unit - Building B"
+    type: "actuator"
+    enabled: true
+    location: "Building B, Rooftop"
+    tags:
+      building: "B"
+      type: "hvac"
+    telemetry:
+      - field: setpoint
+        type: float
+        min: 18
+        max: 28
+        unit: celsius
+        defaultValue: 21.0
+      - field: currentTemp
+        type: float
+        min: 17
+        max: 30
+        unit: celsius
+        noisePercent: 1
+      - field: mode
+        type: string
+        defaultValue: "cooling"
+      - field: fanSpeed
+        type: int
+        min: 0
+        max: 100
+        unit: percent
+        defaultValue: 60
+    events:
+      - type: TelemetryReceived
+        interval: 15000
+
+  # Gateway Device
+  - id: "gateway-001"
+    name: "Building A Gateway"
+    type: "gateway"
+    enabled: true
+    location: "Building A, Server Room"
+    tags:
+      building: "A"
+      type: "infrastructure"
+    telemetry:
+      - field: connectedDevices
+        type: int
+        min: 0
+        max: 50
+        defaultValue: 12
+      - field: messagesProcessed
+        type: int
+        min: 0
+        max: 10000
+        defaultValue: 0
+      - field: cpuUsage
+        type: float
+        min: 5
+        max: 95
+        unit: percent
+        noisePercent: 10
+      - field: memoryUsage
+        type: float
+        min: 20
+        max: 80
+        unit: percent
+        noisePercent: 5
+      - field: uptime
+        type: int
+        min: 0
+        max: 999999
+        unit: seconds
+    events:
+      - type: TelemetryReceived
+        interval: 10000
+      - type: DeviceConnected
+      - type: DeviceDisconnected
+      - type: ThresholdExceeded
+        condition: "cpuUsage > 90"
+
+  # Industrial Equipment
+  - id: "pump-001"
+    name: "Cooling Pump Station 1"
+    type: "actuator"
+    enabled: true
+    location: "Building A, Basement"
+    tags:
+      building: "A"
+      type: "industrial"
+    telemetry:
+      - field: flowRate
+        type: float
+        min: 0
+        max: 500
+        unit: liters_per_minute
+        noisePercent: 3
+      - field: pressure
+        type: float
+        min: 0
+        max: 150
+        unit: psi
+        noisePercent: 2
+      - field: motorTemperature
+        type: float
+        min: 30
+        max: 80
+        unit: celsius
+        noisePercent: 2
+      - field: vibration
+        type: float
+        min: 0
+        max: 10
+        unit: mm_per_second
+        noisePercent: 5
+      - field: operatingHours
+        type: int
+        min: 0
+        max: 100000
+        unit: hours
+    events:
+      - type: TelemetryReceived
+        interval: 2000
+      - type: ThresholdExceeded
+        condition: "motorTemperature > 70"
+      - type: AnomalyDetected
+        condition: "vibration > 5"
+      - type: MaintenanceRequired
+        condition: "operatingHours > 5000"

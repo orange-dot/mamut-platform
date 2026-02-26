@@ -1,0 +1,448 @@
+{
+  "id": "fleet-coordination",
+  "version": "1.0.0",
+  "name": "Fleet Command Coordination Workflow",
+  "description": "Coordinate actions across multiple devices in a fleet with partial success handling",
+  "metadata": {
+    "author": "IoT Platform",
+    "tags": ["iot", "fleet", "coordination", "multi-device"]
+  },
+  "config": {
+    "timeoutSeconds": 3600,
+    "defaultRetryPolicy": {
+      "maxAttempts": 2,
+      "initialIntervalSeconds": 5,
+      "backoffCoefficient": 2.0
+    }
+  },
+  "startAt": "ValidateFleetCommand",
+  "states": {
+    "ValidateFleetCommand": {
+      "type": "Task",
+      "comment": "Validate the fleet command request",
+      "activity": "ValidateFleetCommandActivity",
+      "input": {
+        "fleetId": "$.input.entityId",
+        "commandType": "$.input.data.commandType",
+        "commandParams": "$.input.data.params",
+        "targetDevices": "$.input.data.targetDevices"
+      },
+      "resultPath": "$.stepResults.validation",
+      "next": "GetFleetDevices",
+      "catch": [
+        {
+          "errors": ["ValidationError"],
+          "resultPath": "$.stepResults.validationError",
+          "next": "CommandInvalid"
+        }
+      ]
+    },
+    "GetFleetDevices": {
+      "type": "Task",
+      "comment": "Get list of devices in the fleet",
+      "activity": "GetFleetDevicesActivity",
+      "input": {
+        "fleetId": "$.input.entityId",
+        "targetDevices": "$.input.data.targetDevices",
+        "filters": "$.input.data.filters"
+      },
+      "resultPath": "$.stepResults.devices",
+      "next": "PreFlightChecks"
+    },
+    "PreFlightChecks": {
+      "type": "Parallel",
+      "comment": "Run health checks and acquire locks in parallel",
+      "branches": [
+        {
+          "startAt": "CheckDevicesHealth",
+          "states": {
+            "CheckDevicesHealth": {
+              "type": "Task",
+              "activity": "BatchHealthCheckActivity",
+              "input": {
+                "deviceIds": "$.stepResults.devices.deviceIds",
+                "checkType": "pre_command"
+              },
+              "resultPath": "$.healthCheck",
+              "next": "HealthDone"
+            },
+            "HealthDone": {
+              "type": "Succeed",
+              "output": {
+                "type": "health",
+                "results": "$.healthCheck"
+              }
+            }
+          }
+        },
+        {
+          "startAt": "AcquireFleetLock",
+          "states": {
+            "AcquireFleetLock": {
+              "type": "Task",
+              "activity": "AcquireFleetLockActivity",
+              "input": {
+                "fleetId": "$.input.entityId",
+                "commandType": "$.input.data.commandType",
+                "requestedDevices": "$.stepResults.devices.deviceIds",
+                "lockDurationSeconds": 3600
+              },
+              "resultPath": "$.lock",
+              "compensateWith": "ReleaseFleetLockActivity",
+              "next": "LockDone"
+            },
+            "LockDone": {
+              "type": "Succeed",
+              "output": {
+                "type": "lock",
+                "results": "$.lock"
+              }
+            }
+          }
+        }
+      ],
+      "resultPath": "$.stepResults.preflightResults",
+      "next": "EvaluatePreflight",
+      "catch": [
+        {
+          "errors": ["States.ALL"],
+          "resultPath": "$.stepResults.preflightError",
+          "next": "PreflightFailed"
+        }
+      ]
+    },
+    "EvaluatePreflight": {
+      "type": "Task",
+      "comment": "Evaluate preflight results and determine eligible devices",
+      "activity": "EvaluatePreflightActivity",
+      "input": {
+        "healthResults": "$.stepResults.preflightResults[0].results",
+        "lockResults": "$.stepResults.preflightResults[1].results",
+        "minimumHealthyPercent": "$.input.data.minimumHealthyPercent",
+        "allowPartialExecution": "$.input.data.allowPartialExecution"
+      },
+      "resultPath": "$.stepResults.evaluation",
+      "next": "CheckEligibility"
+    },
+    "CheckEligibility": {
+      "type": "Choice",
+      "comment": "Check if enough devices are eligible to proceed",
+      "choices": [
+        {
+          "condition": {
+            "operator": "comparison",
+            "variable": "$.stepResults.evaluation.canProceed",
+            "comparisonType": "Equals",
+            "value": true
+          },
+          "next": "NotifyCommandStart"
+        }
+      ],
+      "default": "InsufficientDevices"
+    },
+    "NotifyCommandStart": {
+      "type": "Task",
+      "comment": "Notify about fleet command initiation",
+      "activity": "NotifyActivity",
+      "input": {
+        "channel": "log",
+        "subject": "Fleet Command Starting",
+        "message": "Initiating fleet command execution",
+        "data": {
+          "fleetId": "$.input.entityId",
+          "commandType": "$.input.data.commandType",
+          "eligibleDevices": "$.stepResults.evaluation.eligibleDeviceCount",
+          "excludedDevices": "$.stepResults.evaluation.excludedDeviceCount"
+        }
+      },
+      "resultPath": "$.stepResults.startNotification",
+      "next": "ExecuteFleetCommand"
+    },
+    "ExecuteFleetCommand": {
+      "type": "Task",
+      "comment": "Execute command across all eligible devices",
+      "activity": "ExecuteFleetCommandActivity",
+      "input": {
+        "fleetId": "$.input.entityId",
+        "commandType": "$.input.data.commandType",
+        "commandParams": "$.input.data.params",
+        "eligibleDevices": "$.stepResults.evaluation.eligibleDevices",
+        "executionMode": "$.input.data.executionMode",
+        "batchSize": "$.input.data.batchSize",
+        "delayBetweenBatches": "$.input.data.delayBetweenBatches"
+      },
+      "resultPath": "$.stepResults.execution",
+      "compensateWith": "RollbackFleetCommandActivity",
+      "next": "WaitForCompletion"
+    },
+    "WaitForCompletion": {
+      "type": "Wait",
+      "comment": "Wait for command completion events from all devices (30 min timeout)",
+      "waitForEvent": {
+        "eventType": "FleetCommandBatchComplete",
+        "timeoutSeconds": 1800,
+        "matchConditions": {
+          "fleetId": "$.input.entityId",
+          "commandId": "$.stepResults.execution.commandId"
+        }
+      },
+      "resultPath": "$.stepResults.completionEvent",
+      "next": "VerifyResults",
+      "catch": [
+        {
+          "errors": ["States.Timeout"],
+          "resultPath": "$.stepResults.timeout",
+          "next": "HandlePartialTimeout"
+        }
+      ]
+    },
+    "HandlePartialTimeout": {
+      "type": "Task",
+      "comment": "Check which devices completed and which timed out",
+      "activity": "GetFleetCommandStatusActivity",
+      "input": {
+        "commandId": "$.stepResults.execution.commandId"
+      },
+      "resultPath": "$.stepResults.partialStatus",
+      "next": "EvaluatePartialResults"
+    },
+    "EvaluatePartialResults": {
+      "type": "Choice",
+      "comment": "Decide how to handle partial completion",
+      "choices": [
+        {
+          "condition": {
+            "operator": "comparison",
+            "variable": "$.stepResults.partialStatus.successPercent",
+            "comparisonType": "GreaterThanOrEquals",
+            "value": 80
+          },
+          "next": "AcceptPartialSuccess"
+        },
+        {
+          "condition": {
+            "operator": "comparison",
+            "variable": "$.stepResults.partialStatus.successPercent",
+            "comparisonType": "LessThan",
+            "value": 50
+          },
+          "next": "RollbackFleet"
+        }
+      ],
+      "default": "AcceptPartialSuccess"
+    },
+    "VerifyResults": {
+      "type": "Task",
+      "comment": "Verify command results across fleet",
+      "activity": "VerifyFleetCommandActivity",
+      "input": {
+        "commandId": "$.stepResults.execution.commandId",
+        "expectedState": "$.input.data.expectedState"
+      },
+      "resultPath": "$.stepResults.verification",
+      "next": "CheckVerification"
+    },
+    "CheckVerification": {
+      "type": "Choice",
+      "comment": "Check verification results",
+      "choices": [
+        {
+          "condition": {
+            "operator": "comparison",
+            "variable": "$.stepResults.verification.allSuccessful",
+            "comparisonType": "Equals",
+            "value": true
+          },
+          "next": "ReleaseResources"
+        },
+        {
+          "condition": {
+            "operator": "comparison",
+            "variable": "$.stepResults.verification.successPercent",
+            "comparisonType": "GreaterThanOrEquals",
+            "value": 80
+          },
+          "next": "AcceptPartialSuccess"
+        }
+      ],
+      "default": "RollbackFleet"
+    },
+    "AcceptPartialSuccess": {
+      "type": "Task",
+      "comment": "Log partial success and notify about failures",
+      "activity": "NotifyActivity",
+      "input": {
+        "channel": "teams",
+        "subject": "Fleet Command Partial Success",
+        "message": "Fleet command completed with some failures",
+        "priority": "normal",
+        "data": {
+          "fleetId": "$.input.entityId",
+          "commandType": "$.input.data.commandType",
+          "successCount": "$.stepResults.verification.successCount",
+          "failedCount": "$.stepResults.verification.failedCount",
+          "failedDevices": "$.stepResults.verification.failedDevices"
+        }
+      },
+      "resultPath": "$.stepResults.partialNotification",
+      "next": "ReleaseResources"
+    },
+    "ReleaseResources": {
+      "type": "Task",
+      "comment": "Release fleet lock and cleanup",
+      "activity": "ReleaseFleetLockActivity",
+      "input": {
+        "lockId": "$.stepResults.preflightResults[1].results.lockId"
+      },
+      "resultPath": "$.stepResults.lockRelease",
+      "next": "CreateCommandRecord"
+    },
+    "CreateCommandRecord": {
+      "type": "Task",
+      "comment": "Create fleet command execution record",
+      "activity": "CreateRecordActivity",
+      "input": {
+        "recordType": "FleetCommand",
+        "idempotencyKey": "$.input.idempotencyKey",
+        "data": {
+          "fleetId": "$.input.entityId",
+          "commandId": "$.stepResults.execution.commandId",
+          "commandType": "$.input.data.commandType",
+          "targetedDevices": "$.stepResults.evaluation.eligibleDeviceCount",
+          "successfulDevices": "$.stepResults.verification.successCount",
+          "failedDevices": "$.stepResults.verification.failedCount",
+          "status": "Completed",
+          "completedAt": "$.variables.timestamp"
+        }
+      },
+      "resultPath": "$.stepResults.commandRecord",
+      "next": "FleetCommandSuccess"
+    },
+    "FleetCommandSuccess": {
+      "type": "Succeed",
+      "comment": "Fleet command completed successfully",
+      "output": {
+        "success": true,
+        "message": "Fleet command executed successfully",
+        "fleetId": "$.input.entityId",
+        "commandId": "$.stepResults.execution.commandId",
+        "results": {
+          "targeted": "$.stepResults.evaluation.eligibleDeviceCount",
+          "successful": "$.stepResults.verification.successCount",
+          "failed": "$.stepResults.verification.failedCount"
+        }
+      }
+    },
+    "RollbackFleet": {
+      "type": "Task",
+      "comment": "Rollback fleet command due to high failure rate",
+      "activity": "RollbackFleetCommandActivity",
+      "input": {
+        "commandId": "$.stepResults.execution.commandId",
+        "rollbackReason": "High failure rate detected"
+      },
+      "resultPath": "$.stepResults.rollback",
+      "next": "WaitForRollback"
+    },
+    "WaitForRollback": {
+      "type": "Wait",
+      "comment": "Wait for rollback completion (20 min timeout)",
+      "waitForEvent": {
+        "eventType": "FleetRollbackComplete",
+        "timeoutSeconds": 1200,
+        "matchConditions": {
+          "commandId": "$.stepResults.execution.commandId"
+        }
+      },
+      "resultPath": "$.stepResults.rollbackComplete",
+      "next": "NotifyRollback",
+      "catch": [
+        {
+          "errors": ["States.Timeout"],
+          "resultPath": "$.stepResults.rollbackTimeout",
+          "next": "CriticalRollbackFailure"
+        }
+      ]
+    },
+    "NotifyRollback": {
+      "type": "Task",
+      "comment": "Notify about fleet rollback",
+      "activity": "NotifyActivity",
+      "input": {
+        "channel": "teams",
+        "subject": "Fleet Command Rolled Back",
+        "message": "Fleet command was rolled back due to high failure rate",
+        "priority": "high",
+        "data": {
+          "fleetId": "$.input.entityId",
+          "commandType": "$.input.data.commandType",
+          "rollbackResults": "$.stepResults.rollback"
+        }
+      },
+      "resultPath": "$.stepResults.rollbackNotification",
+      "next": "ReleaseResourcesAfterRollback"
+    },
+    "ReleaseResourcesAfterRollback": {
+      "type": "Task",
+      "comment": "Release fleet lock after rollback",
+      "activity": "ReleaseFleetLockActivity",
+      "input": {
+        "lockId": "$.stepResults.preflightResults[1].results.lockId"
+      },
+      "resultPath": "$.stepResults.lockReleaseRollback",
+      "next": "FleetCommandRolledBack"
+    },
+    "FleetCommandRolledBack": {
+      "type": "Succeed",
+      "comment": "Fleet command was rolled back",
+      "output": {
+        "success": false,
+        "message": "Fleet command rolled back due to failures",
+        "fleetId": "$.input.entityId",
+        "commandId": "$.stepResults.execution.commandId",
+        "rollbackSuccessful": true
+      }
+    },
+    "CriticalRollbackFailure": {
+      "type": "Task",
+      "comment": "Critical failure - rollback timed out",
+      "activity": "NotifyActivity",
+      "input": {
+        "channel": "pager",
+        "subject": "CRITICAL: Fleet Rollback Failed",
+        "message": "Fleet rollback timed out - manual intervention required",
+        "priority": "urgent",
+        "data": {
+          "fleetId": "$.input.entityId",
+          "commandId": "$.stepResults.execution.commandId"
+        }
+      },
+      "resultPath": "$.stepResults.criticalNotification",
+      "next": "CriticalFailure"
+    },
+    "CriticalFailure": {
+      "type": "Fail",
+      "comment": "Critical fleet failure",
+      "error": "FleetRollbackFailed",
+      "cause": "Fleet rollback failed - devices may be in inconsistent state"
+    },
+    "PreflightFailed": {
+      "type": "Fail",
+      "comment": "Preflight checks failed",
+      "error": "PreflightFailed",
+      "cause": "Could not complete preflight checks for fleet command"
+    },
+    "InsufficientDevices": {
+      "type": "Fail",
+      "comment": "Not enough healthy devices to proceed",
+      "error": "InsufficientHealthyDevices",
+      "cause": "Insufficient number of healthy devices to execute fleet command"
+    },
+    "CommandInvalid": {
+      "type": "Fail",
+      "comment": "Invalid fleet command",
+      "error": "InvalidFleetCommand",
+      "cause": "Fleet command validation failed"
+    }
+  }
+}

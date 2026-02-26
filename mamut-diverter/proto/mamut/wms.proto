@@ -1,0 +1,19 @@
+syntax = "proto3";
+package mamut.wms;
+
+import "mamut/common.proto";
+
+message SortDecision {
+  mamut.common.ItemId item_id = 1;
+  mamut.common.Direction target = 2;
+  string destination = 3;
+}
+
+service WmsService {
+  rpc GetSortDecision(GetSortDecisionRequest) returns (SortDecision);
+}
+
+message GetSortDecisionRequest {
+  mamut.common.ItemId item_id = 1;
+  string barcode = 2;
+}

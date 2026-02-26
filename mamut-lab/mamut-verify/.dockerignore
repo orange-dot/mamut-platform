@@ -1,0 +1,263 @@
+# =============================================================================
+# Mamut Verification Harness - Docker Ignore File
+# =============================================================================
+# This file specifies which files and directories should be excluded from
+# the Docker build context. Excluding unnecessary files:
+#   - Reduces build context size (faster docker build)
+#   - Prevents sensitive files from being included in images
+#   - Avoids cache invalidation from irrelevant file changes
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Build Artifacts
+# -----------------------------------------------------------------------------
+# Rust target directory contains compiled binaries, intermediate objects,
+# and dependencies. This is large and should be rebuilt inside the container.
+target/
+**/target/
+
+# Cargo lock backup files
+Cargo.lock.bak
+
+# Incremental compilation artifacts
+**/*.rmeta
+**/*.rlib
+**/*.d
+
+# -----------------------------------------------------------------------------
+# Version Control
+# -----------------------------------------------------------------------------
+# Git directory and related files
+.git/
+.gitignore
+.gitattributes
+.gitmodules
+
+# GitHub specific files (not needed in container)
+.github/
+
+# -----------------------------------------------------------------------------
+# IDE and Editor Files
+# -----------------------------------------------------------------------------
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# JetBrains IDEs (IntelliJ, CLion, RustRover)
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Vim/Neovim
+*.swp
+*.swo
+*~
+.vim/
+
+# Emacs
+*~
+\#*\#
+.#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# -----------------------------------------------------------------------------
+# Operating System Files
+# -----------------------------------------------------------------------------
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# -----------------------------------------------------------------------------
+# Documentation and Metadata
+# -----------------------------------------------------------------------------
+# README files (not needed in runtime image)
+README.md
+README*.md
+CHANGELOG.md
+CONTRIBUTING.md
+LICENSE
+LICENSE.md
+AUTHORS
+AUTHORS.md
+
+# Documentation directories
+docs/
+doc/
+documentation/
+
+# -----------------------------------------------------------------------------
+# Test Files and Fixtures
+# -----------------------------------------------------------------------------
+# Test directories (tests run separately, not in production image)
+tests/
+test/
+**/tests/
+**/*_test.rs
+**/*_tests.rs
+
+# Test fixtures and data
+fixtures/
+testdata/
+test_data/
+**/*.fixture
+**/*.snap
+
+# Benchmark files
+benches/
+**/benches/
+
+# Coverage reports
+coverage/
+*.lcov
+*.gcov
+tarpaulin-report.html
+
+# -----------------------------------------------------------------------------
+# Development Configuration
+# -----------------------------------------------------------------------------
+# Local environment files (may contain secrets)
+.env
+.env.*
+!.env.example
+*.local
+
+# Development configuration
+config.local.*
+settings.local.*
+
+# Shell history and configs
+.bash_history
+.zsh_history
+
+# -----------------------------------------------------------------------------
+# CI/CD Configuration
+# -----------------------------------------------------------------------------
+# CI configuration files (not needed in runtime)
+.travis.yml
+.circleci/
+.gitlab-ci.yml
+azure-pipelines.yml
+Jenkinsfile
+.drone.yml
+
+# GitHub Actions
+.github/
+
+# -----------------------------------------------------------------------------
+# Docker Files (Avoid Recursive Context)
+# -----------------------------------------------------------------------------
+# Docker configuration files themselves (Dockerfiles are copied explicitly)
+# Note: We don't exclude the entire docker/ directory as it contains
+# configuration files that may be needed
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# Docker build cache
+.docker/
+
+# -----------------------------------------------------------------------------
+# Logs and Temporary Files
+# -----------------------------------------------------------------------------
+# Log files
+*.log
+logs/
+log/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Cache directories
+.cache/
+__pycache__/
+*.pyc
+
+# -----------------------------------------------------------------------------
+# Security Sensitive Files
+# -----------------------------------------------------------------------------
+# Private keys and certificates
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+
+# Secrets and credentials
+secrets/
+credentials/
+*.secret
+*.secrets
+passwords.txt
+
+# AWS credentials
+.aws/
+
+# Kubernetes secrets
+*.kubeconfig
+
+# -----------------------------------------------------------------------------
+# Large Binary Files
+# -----------------------------------------------------------------------------
+# Archives (likely large and not needed)
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# Database dumps
+*.sql
+*.dump
+
+# Core dumps
+core
+core.*
+
+# -----------------------------------------------------------------------------
+# Project Specific Exclusions
+# -----------------------------------------------------------------------------
+# Quint specification outputs (development artifacts)
+specs/**/*.itf.json
+specs/**/*.trace
+
+# FFI generated headers (regenerated during build)
+crates/mamut-ffi/include/verifier.h.bak
+
+# Research and planning documents
+*.md
+!proto/*.md
+
+# Performance profiles
+*.perf
+perf.data
+flamegraph.svg

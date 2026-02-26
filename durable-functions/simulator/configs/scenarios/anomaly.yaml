@@ -1,0 +1,83 @@
+# Anomaly Detection Scenario
+# Simulates normal telemetry followed by a temperature spike anomaly
+
+name: anomaly-detection
+description: Simulates normal telemetry followed by an anomaly that triggers detection
+
+steps:
+  - name: Normal Reading 1
+    deviceId: sensor-temp-001
+    eventType: TelemetryReceived
+    payload:
+      temperature: 24.0
+      humidity: 50.0
+    delayMs: 0
+
+  - name: Normal Reading 2
+    deviceId: sensor-temp-001
+    eventType: TelemetryReceived
+    payload:
+      temperature: 24.5
+      humidity: 49.5
+    delayMs: 3000
+
+  - name: Normal Reading 3
+    deviceId: sensor-temp-001
+    eventType: TelemetryReceived
+    payload:
+      temperature: 25.0
+      humidity: 49.0
+    delayMs: 3000
+
+  - name: Normal Reading 4
+    deviceId: sensor-temp-001
+    eventType: TelemetryReceived
+    payload:
+      temperature: 25.5
+      humidity: 48.5
+    delayMs: 3000
+
+  - name: Slight Increase
+    deviceId: sensor-temp-001
+    eventType: TelemetryReceived
+    payload:
+      temperature: 28.0
+      humidity: 47.0
+    delayMs: 3000
+
+  - name: Temperature Spike - Anomaly!
+    deviceId: sensor-temp-001
+    eventType: TelemetryReceived
+    payload:
+      temperature: 150.0
+      humidity: 30.0
+    delayMs: 2000
+
+  - name: Threshold Exceeded Alert
+    deviceId: sensor-temp-001
+    eventType: ThresholdExceeded
+    payload:
+      field: temperature
+      threshold: 80
+      actualValue: 150.0
+      severity: critical
+    delayMs: 500
+
+  - name: Anomaly Detected
+    deviceId: sensor-temp-001
+    eventType: AnomalyDetected
+    payload:
+      anomalyType: temperature_spike
+      severity: critical
+      baseline: 25.0
+      deviation: 125.0
+      recommendation: immediate_investigation
+    delayMs: 500
+
+  - name: Return to Normal
+    deviceId: sensor-temp-001
+    eventType: TelemetryReceived
+    payload:
+      temperature: 26.0
+      humidity: 48.0
+    delayMs: 5000

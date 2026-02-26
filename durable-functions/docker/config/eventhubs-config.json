@@ -1,0 +1,45 @@
+{
+  "UserConfig": {
+    "NamespaceConfig": [
+      {
+        "Type": "EventHub",
+        "Name": "emulatorNs1",
+        "Entities": [
+          {
+            "Name": "partitions",
+            "PartitionCount": "32",
+            "ConsumerGroups": []
+          },
+          {
+            "Name": "loadmonitor",
+            "PartitionCount": "1",
+            "ConsumerGroups": []
+          },
+          {
+            "Name": "clients0",
+            "PartitionCount": "1",
+            "ConsumerGroups": []
+          },
+          {
+            "Name": "clients1",
+            "PartitionCount": "1",
+            "ConsumerGroups": []
+          },
+          {
+            "Name": "clients2",
+            "PartitionCount": "1",
+            "ConsumerGroups": []
+          },
+          {
+            "Name": "clients3",
+            "PartitionCount": "1",
+            "ConsumerGroups": []
+          }
+        ]
+      }
+    ],
+    "LoggingConfig": {
+      "Type": "File"
+    }
+  }
+}

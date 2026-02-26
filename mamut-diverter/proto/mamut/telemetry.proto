@@ -1,0 +1,30 @@
+syntax = "proto3";
+package mamut.telemetry;
+
+import "mamut/common.proto";
+
+message HealthStatus {
+  string service_name = 1;
+  bool healthy = 2;
+  mamut.common.Timestamp timestamp = 3;
+}
+
+message Metric {
+  string name = 1;
+  double value = 2;
+  map<string, string> labels = 3;
+  mamut.common.Timestamp timestamp = 4;
+}
+
+service TelemetryService {
+  rpc GetHealth(GetHealthRequest) returns (HealthStatus);
+  rpc StreamMetrics(StreamMetricsRequest) returns (stream Metric);
+}
+
+message GetHealthRequest {
+  string service_name = 1;
+}
+
+message StreamMetricsRequest {
+  repeated string metric_names = 1;
+}

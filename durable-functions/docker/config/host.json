@@ -1,0 +1,34 @@
+{
+  "version": "2.0",
+  "logging": {
+    "logLevel": {
+      "default": "Information",
+      "Host.Results": "Information",
+      "Function": "Information",
+      "Host.Aggregator": "Information",
+      "DurableTask.Netherite": "Information",
+      "DurableTask.Core": "Warning"
+    }
+  },
+  "extensions": {
+    "durableTask": {
+      "storageProvider": {
+        "type": "Netherite",
+        "eventHubsConnectionStringName": "EventHubsConnection",
+        "storageConnectionStringName": "AzureWebJobsStorage",
+        "hubName": "taskhub",
+        "partitionCount": 32
+      },
+      "maxConcurrentActivityFunctions": 10,
+      "maxConcurrentOrchestratorFunctions": 10,
+      "maxConcurrentEntityFunctions": 10
+    },
+    "serviceBus": {
+      "prefetchCount": 10,
+      "sessionHandlerOptions": {
+        "maxConcurrentSessions": 16,
+        "autoComplete": false
+      }
+    }
+  }
+}

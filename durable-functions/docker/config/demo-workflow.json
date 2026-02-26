@@ -1,0 +1,111 @@
+{
+  "id": "demo-workflow",
+  "version": "1.0.0",
+  "name": "Demo Workflow",
+  "description": "A simple demo workflow for testing the orchestration system",
+  "metadata": {
+    "author": "Demo",
+    "tags": ["demo", "test"]
+  },
+  "config": {
+    "timeoutSeconds": 300,
+    "defaultRetryPolicy": {
+      "maxAttempts": 3,
+      "initialIntervalSeconds": 1,
+      "backoffCoefficient": 2.0
+    }
+  },
+  "startAt": "GetRecord",
+  "states": {
+    "GetRecord": {
+      "type": "Task",
+      "comment": "Try to get an existing record",
+      "activity": "GetRecordActivity",
+      "input": {
+        "recordType": "Demo",
+        "recordId": "$.input.entityId"
+      },
+      "resultPath": "$.stepResults.existingRecord",
+      "next": "CheckRecordExists",
+      "catch": [
+        {
+          "errors": ["States.ALL"],
+          "resultPath": "$.stepResults.getRecordError",
+          "next": "CreateNewRecord"
+        }
+      ]
+    },
+    "CheckRecordExists": {
+      "type": "Choice",
+      "comment": "Check if record was found",
+      "choices": [
+        {
+          "condition": {
+            "operator": "comparison",
+            "variable": "$.stepResults.existingRecord.found",
+            "comparisonType": "Equals",
+            "value": true
+          },
+          "next": "UpdateExistingRecord"
+        }
+      ],
+      "default": "CreateNewRecord"
+    },
+    "CreateNewRecord": {
+      "type": "Task",
+      "comment": "Create a new record",
+      "activity": "CreateRecordActivity",
+      "input": {
+        "recordType": "Demo",
+        "idempotencyKey": "$.input.idempotencyKey",
+        "data": {
+          "entityId": "$.input.entityId",
+          "payload": "$.input.data",
+          "createdAt": "$.variables.timestamp"
+        }
+      },
+      "resultPath": "$.stepResults.newRecord",
+      "compensateWith": "CompensateCreateRecordActivity",
+      "next": "SendNotification"
+    },
+    "UpdateExistingRecord": {
+      "type": "Task",
+      "comment": "Update the existing record",
+      "activity": "UpdateRecordActivity",
+      "input": {
+        "recordType": "Demo",
+        "recordId": "$.stepResults.existingRecord.recordId",
+        "data": {
+          "payload": "$.input.data",
+          "updatedAt": "$.variables.timestamp"
+        }
+      },
+      "resultPath": "$.stepResults.updatedRecord",
+      "next": "SendNotification"
+    },
+    "SendNotification": {
+      "type": "Task",
+      "comment": "Send a notification about the operation",
+      "activity": "NotifyActivity",
+      "input": {
+        "channel": "log",
+        "subject": "Demo Workflow Complete",
+        "message": "Demo workflow completed successfully",
+        "data": {
+          "entityId": "$.input.entityId"
+        }
+      },
+      "resultPath": "$.stepResults.notification",
+      "next": "Complete"
+    },
+    "Complete": {
+      "type": "Succeed",
+      "comment": "Workflow completed successfully",
+      "output": {
+        "success": true,
+        "message": "Demo workflow completed",
+        "entityId": "$.input.entityId"
+      }
+    }
+  }
+}

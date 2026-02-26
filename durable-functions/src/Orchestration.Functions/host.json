@@ -1,0 +1,30 @@
+{
+  "version": "2.0",
+  "logging": {
+    "applicationInsights": {
+      "samplingSettings": {
+        "isEnabled": true,
+        "excludedTypes": "Request"
+      },
+      "enableLiveMetricsFilters": true
+    }
+  },
+  "extensions": {
+    "durableTask": {
+      "storageProvider": {
+        "type": "AzureStorage"
+      },
+      "extendedSessionsEnabled": true,
+      "maxConcurrentActivityFunctions": 10,
+      "maxConcurrentOrchestratorFunctions": 10,
+      "maxConcurrentEntityFunctions": 10
+    },
+    "serviceBus": {
+      "prefetchCount": 10,
+      "sessionHandlerOptions": {
+        "maxConcurrentSessions": 16,
+        "autoComplete": false
+      }
+    }
+  }
+}

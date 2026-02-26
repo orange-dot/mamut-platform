@@ -1,0 +1,13 @@
+[package]
+name = "mamut-wms"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+mamut-core = { path = "../mamut-core" }
+mamut-proto = { path = "../mamut-proto" }
+tokio = { workspace = true }
+tonic = { workspace = true }
+thiserror = { workspace = true }

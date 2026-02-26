@@ -1,0 +1,48 @@
+[package]
+name = "mamut-checker"
+description = "Consistency model checkers and linearizability verification"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Internal crates
+mamut-core.workspace = true
+mamut-history.workspace = true
+
+# Async
+tokio.workspace = true
+async-trait.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Error handling
+thiserror.workspace = true
+
+# Logging
+tracing.workspace = true
+
+# Time
+chrono.workspace = true
+
+# Utilities
+ordered-float.workspace = true
+uuid.workspace = true
+dashmap.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+criterion.workspace = true
+
+[features]
+default = []
+parallel = []  # Enable parallel search algorithms
+
+[[bench]]
+name = "checker_bench"
+harness = false

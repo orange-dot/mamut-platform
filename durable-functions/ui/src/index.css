@@ -1,0 +1,157 @@
+@import "tailwindcss";
+
+@theme {
+  --color-dark-bg: #0d1117;
+  --color-dark-card: #161b22;
+  --color-dark-border: #30363d;
+  --color-dark-hover: #21262d;
+}
+
+/* CSS Custom Properties for theming */
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  /* Light theme (default) */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f6f8fa;
+  --bg-hover: #f0f2f4;
+  --text-primary: #1f2328;
+  --text-secondary: #656d76;
+  --text-tertiary: #8b949e;
+  --text-muted: #8b949e;
+  --border-color: #d0d7de;
+  --border-subtle: #e6e8eb;
+  --border-hover: #b0b8c0;
+  --primary-color: #0969da;
+  --primary-color-alpha: rgba(9, 105, 218, 0.1);
+  --success-color: #1a7f37;
+  --success-bg: rgba(26, 127, 55, 0.1);
+  --success-color-alpha: rgba(26, 127, 55, 0.15);
+  --warning-color: #9a6700;
+  --warning-bg: rgba(154, 103, 0, 0.1);
+  --error-color: #cf222e;
+  --error-bg: rgba(207, 34, 46, 0.1);
+  --error-color-alpha: rgba(207, 34, 46, 0.15);
+  --info-color: #0969da;
+  --info-bg: rgba(9, 105, 218, 0.1);
+}
+
+/* Dark theme */
+html.dark {
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-hover: #21262d;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-tertiary: #6e7681;
+  --text-muted: #6e7681;
+  --border-color: #30363d;
+  --border-subtle: #21262d;
+  --border-hover: #484f58;
+  --primary-color: #58a6ff;
+  --primary-color-alpha: rgba(88, 166, 255, 0.15);
+  --success-color: #3fb950;
+  --success-bg: rgba(63, 185, 80, 0.15);
+  --success-color-alpha: rgba(63, 185, 80, 0.15);
+  --warning-color: #d29922;
+  --warning-bg: rgba(210, 153, 34, 0.15);
+  --error-color: #f85149;
+  --error-bg: rgba(248, 81, 73, 0.15);
+  --error-color-alpha: rgba(248, 81, 73, 0.15);
+  --info-color: #58a6ff;
+  --info-bg: rgba(88, 166, 255, 0.15);
+  color-scheme: dark;
+}
+
+/* System preference detection */
+@media (prefers-color-scheme: dark) {
+  html:not(.light):not(.dark) {
+    --bg-primary: #0d1117;
+    --bg-secondary: #161b22;
+    --bg-hover: #21262d;
+    --text-primary: #e6edf3;
+    --text-secondary: #8b949e;
+    --text-tertiary: #6e7681;
+    --text-muted: #6e7681;
+    --border-color: #30363d;
+    --border-subtle: #21262d;
+    --border-hover: #484f58;
+    --primary-color: #58a6ff;
+    --primary-color-alpha: rgba(88, 166, 255, 0.15);
+    --success-color: #3fb950;
+    --success-bg: rgba(63, 185, 80, 0.15);
+    --success-color-alpha: rgba(63, 185, 80, 0.15);
+    --warning-color: #d29922;
+    --warning-bg: rgba(210, 153, 34, 0.15);
+    --error-color: #f85149;
+    --error-bg: rgba(248, 81, 73, 0.15);
+    --error-color-alpha: rgba(248, 81, 73, 0.15);
+    --info-color: #58a6ff;
+    --info-bg: rgba(88, 166, 255, 0.15);
+    color-scheme: dark;
+  }
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  margin: 0;
+  min-height: 100vh;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Default to dark mode for existing Tailwind usage */
+html {
+  color-scheme: dark;
+}
+
+html.dark body {
+  @apply bg-dark-bg text-gray-100;
+}
+
+/* Focus styles for accessibility */
+:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+/* Smooth transitions for theme changes */
+* {
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+/* Screen reader only utility */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Skip link for keyboard navigation */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 0;
+  background: var(--primary-color);
+  color: white;
+  padding: 0.5rem 1rem;
+  z-index: 9999;
+  text-decoration: none;
+  border-radius: 0 0 0.25rem 0;
+}
+
+.skip-link:focus {
+  top: 0;
+}

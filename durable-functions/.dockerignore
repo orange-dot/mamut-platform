@@ -1,0 +1,61 @@
+# =============================================================================
+# Docker ignore file
+# Files and directories to exclude from Docker build context
+# =============================================================================
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE and editors
+.vs
+.vscode
+*.user
+*.suo
+*.sln.docstates
+
+# Build outputs
+**/bin
+**/obj
+**/out
+**/publish
+
+# Test results
+**/TestResults
+**/coverage
+
+# NuGet
+**/packages
+
+# Documentation (not needed in container)
+**/*.md
+!docker/README.md
+
+# Docker files (prevent recursive context)
+docker/
+!docker/Dockerfile.functions
+
+# Local settings (may contain secrets)
+**/local.settings.json
+**/.env
+**/.env.*
+!**/.env.example
+
+# Logs and temp files
+**/*.log
+**/logs
+**/tmp
+**/temp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Claude/AI files
+.claude
+
+# Other
+*.bak
+*.tmp
+*.swp

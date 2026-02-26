@@ -1,0 +1,109 @@
+# Firmware Update Scenario
+# Simulates a successful firmware update with progress events
+
+name: firmware-update-success
+description: Simulates a complete firmware update flow from download to verification
+
+steps:
+  - name: Download Started
+    deviceId: hvac-001
+    eventType: FirmwareDownloadStarted
+    payload:
+      packageId: "fw-2.0.0-hvac"
+      targetVersion: "2.0.0"
+      currentVersion: "1.0.0"
+      packageSize: 5242880
+      packageUrl: "https://firmware.example.com/hvac/2.0.0.bin"
+    delayMs: 0
+
+  - name: Download Progress 25%
+    deviceId: hvac-001
+    eventType: FirmwareDownloadProgress
+    payload:
+      progress: 25
+      bytesDownloaded: 1310720
+    delayMs: 3000
+
+  - name: Download Progress 50%
+    deviceId: hvac-001
+    eventType: FirmwareDownloadProgress
+    payload:
+      progress: 50
+      bytesDownloaded: 2621440
+    delayMs: 3000
+
+  - name: Download Progress 75%
+    deviceId: hvac-001
+    eventType: FirmwareDownloadProgress
+    payload:
+      progress: 75
+      bytesDownloaded: 3932160
+    delayMs: 3000
+
+  - name: Download Complete
+    deviceId: hvac-001
+    eventType: FirmwareDownloaded
+    payload:
+      packageId: "fw-2.0.0-hvac"
+      version: "2.0.0"
+      checksum: "sha256:abc123def456..."
+    delayMs: 3000
+
+  - name: Install Started
+    deviceId: hvac-001
+    eventType: FirmwareInstallStarted
+    payload:
+      version: "2.0.0"
+      estimatedTime: 120
+    delayMs: 2000
+
+  - name: Install Progress 50%
+    deviceId: hvac-001
+    eventType: FirmwareInstallProgress
+    payload:
+      progress: 50
+    delayMs: 5000
+
+  - name: Install Complete
+    deviceId: hvac-001
+    eventType: FirmwareInstalled
+    payload:
+      version: "2.0.0"
+      installTime: 95
+    delayMs: 5000
+
+  - name: Device Rebooting
+    deviceId: hvac-001
+    eventType: DeviceRebooting
+    payload:
+      reason: firmware_update
+    delayMs: 1000
+
+  - name: Device Offline
+    deviceId: hvac-001
+    eventType: DeviceOffline
+    payload:
+      reason: reboot
+    delayMs: 500
+
+  - name: Device Online - New Version
+    deviceId: hvac-001
+    eventType: DeviceOnline
+    payload:
+      firmwareVersion: "2.0.0"
+      previousVersion: "1.0.0"
+      bootTime: 15.5
+    delayMs: 8000
+
+  - name: Health Check Passed
+    deviceId: hvac-001
+    eventType: HealthCheckPassed
+    payload:
+      checks:
+        connectivity: true
+        telemetry: true
+        commands: true
+        memory: true
+        cpu: true
+      firmwareVersion: "2.0.0"
+    delayMs: 3000

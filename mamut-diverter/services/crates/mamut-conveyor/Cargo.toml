@@ -1,0 +1,16 @@
+[package]
+name = "mamut-conveyor"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+mamut-core = { path = "../mamut-core" }
+mamut-proto = { path = "../mamut-proto" }
+mamut-transport = { path = "../mamut-transport" }
+tokio = { workspace = true }
+tonic = { workspace = true }
+tokio-stream = "0.1"
+async-stream = "0.3"
+thiserror = { workspace = true }

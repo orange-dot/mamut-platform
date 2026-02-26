@@ -1,0 +1,417 @@
+{
+  "id": "firmware-update",
+  "version": "1.0.0",
+  "name": "Firmware Update Orchestration Workflow",
+  "description": "Staged firmware rollout with validation and automatic rollback",
+  "metadata": {
+    "author": "IoT Platform",
+    "tags": ["iot", "firmware", "update", "rollback"]
+  },
+  "config": {
+    "timeoutSeconds": 14400,
+    "defaultRetryPolicy": {
+      "maxAttempts": 2,
+      "initialIntervalSeconds": 5,
+      "backoffCoefficient": 2.0
+    }
+  },
+  "startAt": "ValidatePackage",
+  "states": {
+    "ValidatePackage": {
+      "type": "Task",
+      "comment": "Validate firmware package integrity and compatibility",
+      "activity": "ValidateFirmwarePackageActivity",
+      "input": {
+        "packageId": "$.input.data.packageId",
+        "packageUrl": "$.input.data.packageUrl",
+        "checksum": "$.input.data.checksum",
+        "targetVersion": "$.input.data.targetVersion"
+      },
+      "resultPath": "$.stepResults.packageValidation",
+      "next": "CheckEligibility",
+      "catch": [
+        {
+          "errors": ["ValidationError", "ChecksumMismatch"],
+          "resultPath": "$.stepResults.packageError",
+          "next": "PackageInvalid"
+        }
+      ]
+    },
+    "CheckEligibility": {
+      "type": "Task",
+      "comment": "Check if device is eligible for this firmware update",
+      "activity": "CheckFirmwareEligibilityActivity",
+      "input": {
+        "deviceId": "$.input.entityId",
+        "targetVersion": "$.input.data.targetVersion",
+        "requiredCurrentVersion": "$.input.data.requiredCurrentVersion",
+        "deviceType": "$.input.data.deviceType"
+      },
+      "resultPath": "$.stepResults.eligibility",
+      "next": "EligibilityChoice",
+      "catch": [
+        {
+          "errors": ["States.ALL"],
+          "resultPath": "$.stepResults.eligibilityError",
+          "next": "DeviceNotEligible"
+        }
+      ]
+    },
+    "EligibilityChoice": {
+      "type": "Choice",
+      "comment": "Check eligibility result",
+      "choices": [
+        {
+          "condition": {
+            "operator": "comparison",
+            "variable": "$.stepResults.eligibility.eligible",
+            "comparisonType": "Equals",
+            "value": true
+          },
+          "next": "BackupCurrentFirmware"
+        }
+      ],
+      "default": "DeviceNotEligible"
+    },
+    "BackupCurrentFirmware": {
+      "type": "Task",
+      "comment": "Create backup of current firmware state",
+      "activity": "BackupFirmwareActivity",
+      "input": {
+        "deviceId": "$.input.entityId",
+        "currentVersion": "$.stepResults.eligibility.currentVersion"
+      },
+      "resultPath": "$.stepResults.backup",
+      "compensateWith": "DeleteBackupActivity",
+      "next": "NotifyUpdateStart"
+    },
+    "NotifyUpdateStart": {
+      "type": "Task",
+      "comment": "Notify about firmware update initiation",
+      "activity": "NotifyActivity",
+      "input": {
+        "channel": "log",
+        "subject": "Firmware Update Starting",
+        "message": "Initiating firmware update for device",
+        "data": {
+          "deviceId": "$.input.entityId",
+          "fromVersion": "$.stepResults.eligibility.currentVersion",
+          "toVersion": "$.input.data.targetVersion"
+        }
+      },
+      "resultPath": "$.stepResults.startNotification",
+      "next": "InitiateUpdate"
+    },
+    "InitiateUpdate": {
+      "type": "Task",
+      "comment": "Send firmware update command to device",
+      "activity": "InitiateFirmwareUpdateActivity",
+      "input": {
+        "deviceId": "$.input.entityId",
+        "packageUrl": "$.input.data.packageUrl",
+        "targetVersion": "$.input.data.targetVersion",
+        "updateMode": "$.input.data.updateMode"
+      },
+      "resultPath": "$.stepResults.updateInitiation",
+      "compensateWith": "CancelUpdateActivity",
+      "next": "WaitForDownload"
+    },
+    "WaitForDownload": {
+      "type": "Wait",
+      "comment": "Wait for device to download firmware (15 min timeout)",
+      "waitForEvent": {
+        "eventType": "FirmwareDownloaded",
+        "timeoutSeconds": 900,
+        "matchConditions": {
+          "deviceId": "$.input.entityId",
+          "packageId": "$.input.data.packageId"
+        }
+      },
+      "resultPath": "$.stepResults.downloadEvent",
+      "next": "WaitForInstall",
+      "catch": [
+        {
+          "errors": ["States.Timeout"],
+          "resultPath": "$.stepResults.downloadTimeout",
+          "next": "UpdateFailed"
+        }
+      ]
+    },
+    "WaitForInstall": {
+      "type": "Wait",
+      "comment": "Wait for device to install firmware (30 min timeout)",
+      "waitForEvent": {
+        "eventType": "FirmwareInstalled",
+        "timeoutSeconds": 1800,
+        "matchConditions": {
+          "deviceId": "$.input.entityId",
+          "version": "$.input.data.targetVersion"
+        }
+      },
+      "resultPath": "$.stepResults.installEvent",
+      "next": "WaitForReboot",
+      "catch": [
+        {
+          "errors": ["States.Timeout"],
+          "resultPath": "$.stepResults.installTimeout",
+          "next": "UpdateFailed"
+        }
+      ]
+    },
+    "WaitForReboot": {
+      "type": "Wait",
+      "comment": "Wait for device to reboot and come online (10 min timeout)",
+      "waitForEvent": {
+        "eventType": "DeviceOnline",
+        "timeoutSeconds": 600,
+        "matchConditions": {
+          "deviceId": "$.input.entityId"
+        }
+      },
+      "resultPath": "$.stepResults.rebootEvent",
+      "next": "VerifyHealth",
+      "catch": [
+        {
+          "errors": ["States.Timeout"],
+          "resultPath": "$.stepResults.rebootTimeout",
+          "next": "UpdateFailed"
+        }
+      ]
+    },
+    "VerifyHealth": {
+      "type": "Task",
+      "comment": "Verify device health after firmware update",
+      "activity": "HealthCheckActivity",
+      "input": {
+        "deviceId": "$.input.entityId",
+        "checkType": "post_firmware_update",
+        "expectedVersion": "$.input.data.targetVersion",
+        "healthChecks": ["connectivity", "telemetry", "commands", "memory", "cpu"]
+      },
+      "resultPath": "$.stepResults.healthCheck",
+      "next": "HealthCheckChoice",
+      "catch": [
+        {
+          "errors": ["States.ALL"],
+          "resultPath": "$.stepResults.healthError",
+          "next": "RollbackFirmware"
+        }
+      ]
+    },
+    "HealthCheckChoice": {
+      "type": "Choice",
+      "comment": "Check if health verification passed",
+      "choices": [
+        {
+          "condition": {
+            "operator": "comparison",
+            "variable": "$.stepResults.healthCheck.healthy",
+            "comparisonType": "Equals",
+            "value": true
+          },
+          "next": "UpdateDeviceRecord"
+        }
+      ],
+      "default": "RollbackFirmware"
+    },
+    "UpdateDeviceRecord": {
+      "type": "Task",
+      "comment": "Update device record with new firmware version",
+      "activity": "UpdateRecordActivity",
+      "input": {
+        "recordType": "Device",
+        "recordId": "$.input.entityId",
+        "data": {
+          "firmwareVersion": "$.input.data.targetVersion",
+          "lastFirmwareUpdate": "$.variables.timestamp",
+          "firmwareUpdateStatus": "Success"
+        }
+      },
+      "resultPath": "$.stepResults.recordUpdate",
+      "next": "CleanupBackup"
+    },
+    "CleanupBackup": {
+      "type": "Task",
+      "comment": "Remove firmware backup after successful update",
+      "activity": "DeleteBackupActivity",
+      "input": {
+        "backupId": "$.stepResults.backup.backupId"
+      },
+      "resultPath": "$.stepResults.cleanup",
+      "next": "NotifySuccess"
+    },
+    "NotifySuccess": {
+      "type": "Task",
+      "comment": "Notify about successful firmware update",
+      "activity": "NotifyActivity",
+      "input": {
+        "channel": "teams",
+        "subject": "Firmware Update Successful",
+        "message": "Device firmware updated successfully",
+        "data": {
+          "deviceId": "$.input.entityId",
+          "newVersion": "$.input.data.targetVersion",
+          "previousVersion": "$.stepResults.eligibility.currentVersion"
+        }
+      },
+      "resultPath": "$.stepResults.successNotification",
+      "next": "UpdateSuccess"
+    },
+    "UpdateSuccess": {
+      "type": "Succeed",
+      "comment": "Firmware update completed successfully",
+      "output": {
+        "success": true,
+        "message": "Firmware update completed successfully",
+        "deviceId": "$.input.entityId",
+        "newVersion": "$.input.data.targetVersion",
+        "previousVersion": "$.stepResults.eligibility.currentVersion"
+      }
+    },
+    "RollbackFirmware": {
+      "type": "Task",
+      "comment": "Rollback to previous firmware version",
+      "activity": "RollbackFirmwareActivity",
+      "input": {
+        "deviceId": "$.input.entityId",
+        "backupId": "$.stepResults.backup.backupId",
+        "targetVersion": "$.stepResults.eligibility.currentVersion"
+      },
+      "resultPath": "$.stepResults.rollback",
+      "next": "WaitForRollbackComplete",
+      "catch": [
+        {
+          "errors": ["States.ALL"],
+          "resultPath": "$.stepResults.rollbackError",
+          "next": "RollbackFailed"
+        }
+      ]
+    },
+    "WaitForRollbackComplete": {
+      "type": "Wait",
+      "comment": "Wait for rollback to complete (20 min timeout)",
+      "waitForEvent": {
+        "eventType": "FirmwareRollbackComplete",
+        "timeoutSeconds": 1200,
+        "matchConditions": {
+          "deviceId": "$.input.entityId"
+        }
+      },
+      "resultPath": "$.stepResults.rollbackComplete",
+      "next": "VerifyRollbackHealth",
+      "catch": [
+        {
+          "errors": ["States.Timeout"],
+          "resultPath": "$.stepResults.rollbackTimeout",
+          "next": "RollbackFailed"
+        }
+      ]
+    },
+    "VerifyRollbackHealth": {
+      "type": "Task",
+      "comment": "Verify device health after rollback",
+      "activity": "HealthCheckActivity",
+      "input": {
+        "deviceId": "$.input.entityId",
+        "checkType": "post_rollback",
+        "expectedVersion": "$.stepResults.eligibility.currentVersion"
+      },
+      "resultPath": "$.stepResults.rollbackHealthCheck",
+      "next": "NotifyRollback"
+    },
+    "NotifyRollback": {
+      "type": "Task",
+      "comment": "Notify about firmware rollback",
+      "activity": "NotifyActivity",
+      "input": {
+        "channel": "teams",
+        "subject": "Firmware Update Rolled Back",
+        "message": "Firmware update failed, device rolled back to previous version",
+        "priority": "high",
+        "data": {
+          "deviceId": "$.input.entityId",
+          "attemptedVersion": "$.input.data.targetVersion",
+          "restoredVersion": "$.stepResults.eligibility.currentVersion",
+          "failureReason": "$.stepResults.healthCheck.failureReason"
+        }
+      },
+      "resultPath": "$.stepResults.rollbackNotification",
+      "next": "UpdateRolledBack"
+    },
+    "UpdateRolledBack": {
+      "type": "Succeed",
+      "comment": "Firmware update failed but rollback succeeded",
+      "output": {
+        "success": false,
+        "message": "Firmware update failed, device rolled back successfully",
+        "deviceId": "$.input.entityId",
+        "attemptedVersion": "$.input.data.targetVersion",
+        "currentVersion": "$.stepResults.eligibility.currentVersion",
+        "rollbackSuccessful": true
+      }
+    },
+    "UpdateFailed": {
+      "type": "Compensate",
+      "comment": "Update failed - trigger compensation chain",
+      "next": "NotifyFailure"
+    },
+    "NotifyFailure": {
+      "type": "Task",
+      "comment": "Notify about firmware update failure",
+      "activity": "NotifyActivity",
+      "input": {
+        "channel": "teams",
+        "subject": "Firmware Update Failed",
+        "message": "Firmware update failed during process",
+        "priority": "high",
+        "data": {
+          "deviceId": "$.input.entityId",
+          "targetVersion": "$.input.data.targetVersion"
+        }
+      },
+      "resultPath": "$.stepResults.failureNotification",
+      "next": "UpdateFailedFinal"
+    },
+    "UpdateFailedFinal": {
+      "type": "Fail",
+      "comment": "Firmware update failed",
+      "error": "FirmwareUpdateFailed",
+      "cause": "Firmware update process failed"
+    },
+    "RollbackFailed": {
+      "type": "Task",
+      "comment": "Notify about critical rollback failure",
+      "activity": "NotifyActivity",
+      "input": {
+        "channel": "pager",
+        "subject": "CRITICAL: Firmware Rollback Failed",
+        "message": "Device may be in inconsistent state - manual intervention required",
+        "priority": "urgent",
+        "data": {
+          "deviceId": "$.input.entityId",
+          "attemptedVersion": "$.input.data.targetVersion"
+        }
+      },
+      "resultPath": "$.stepResults.criticalNotification",
+      "next": "RollbackFailedFinal"
+    },
+    "RollbackFailedFinal": {
+      "type": "Fail",
+      "comment": "Critical failure - rollback failed",
+      "error": "CriticalRollbackFailure",
+      "cause": "Firmware rollback failed - device may require manual intervention"
+    },
+    "PackageInvalid": {
+      "type": "Fail",
+      "comment": "Firmware package validation failed",
+      "error": "InvalidFirmwarePackage",
+      "cause": "Firmware package validation failed"
+    },
+    "DeviceNotEligible": {
+      "type": "Fail",
+      "comment": "Device not eligible for firmware update",
+      "error": "DeviceNotEligible",
+      "cause": "Device does not meet eligibility requirements for this firmware update"
+    }
+  }
+}

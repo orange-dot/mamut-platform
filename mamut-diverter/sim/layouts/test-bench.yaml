@@ -1,0 +1,12 @@
+name: test-bench
+zones:
+  - id: zone-1
+    type: belt
+    length_m: 2.0
+  - id: zone-2
+    type: belt
+    length_m: 2.0
+diverters:
+  - id: div-1
+    type: stub
+    after_zone: zone-1
