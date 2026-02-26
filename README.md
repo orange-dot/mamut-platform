@@ -1,7 +1,6 @@
 # Mamut Platform
 
-> ⚠️ **Extreme Agent Development Experiment**
-> This repository is part of an experimental extreme agent development initiative. The structure and organization here represents cutting-edge approaches to AI-assisted software development and multi-component ecosystem management.
+> **Note**: This is an experimental consolidation created as part of agent development work.
 
 Mamut Platform is a unified repository containing all four core components of the Mamut ecosystem. All code is included locally in a single repository structure for easier development, testing, and deployment.
 
